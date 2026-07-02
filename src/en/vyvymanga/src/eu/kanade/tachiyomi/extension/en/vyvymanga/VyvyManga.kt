@@ -18,6 +18,7 @@ import java.util.Calendar
 import java.util.Locale
 
 private const val CORS = "http://93.115.101.150:11584/proxy?url="
+
 @Source
 abstract class VyvyManga : HttpSource() {
 
@@ -83,7 +84,13 @@ abstract class VyvyManga : HttpSource() {
 
     override fun searchMangaParse(response: Response): MangasPage = popularMangaParse(response)
 
-    // Details
+    // Details - SEKARANG MENGGUNAKAN CORS REQUEST
+    override fun mangaDetailsRequest(manga: SManga): Request {
+        // Memastikan URL lengkap dengan domain sebelum dilempar ke CORS proxy
+        val url = if (manga.url.startsWith("http")) manga.url else baseUrl + manga.url
+        return corsRequest(url)
+    }
+
     override fun mangaDetailsParse(response: Response): SManga {
         val document = response.asJsoup()
         return SManga.create().apply {
