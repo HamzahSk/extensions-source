@@ -17,6 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
+private const val CORS = "http://93.115.101.150:11584/proxy?url="
 @Source
 abstract class VyvyManga : HttpSource() {
 
@@ -25,8 +26,15 @@ abstract class VyvyManga : HttpSource() {
     private val dateFormat = SimpleDateFormat("MMM dd, yyy", Locale.US)
     private val relativeDateRegex = Regex("""(\d+)""")
 
+    // Helper function untuk menambahkan CORS ke URL
+    private fun String.withCors(): String = "$CORS$this"
+
+    // Helper untuk membuat request dengan CORS
+    private fun corsRequest(url: String): Request = GET(url.withCors(), headers)
+
     // Popular
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/search" + if (page != 1) "?page=$page" else "", headers)
+    override fun popularMangaRequest(page: Int): Request = 
+        corsRequest("$baseUrl/search" + if (page != 1) "?page=$page" else "")
 
     override fun popularMangaParse(response: Response): MangasPage {
         val document = response.asJsoup()
@@ -42,7 +50,8 @@ abstract class VyvyManga : HttpSource() {
     }
 
     // Latest
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/search?sort=updated_at" + if (page != 1) "&page=$page" else "", headers)
+    override fun latestUpdatesRequest(page: Int): Request = 
+        corsRequest("$baseUrl/search?sort=updated_at" + if (page != 1) "&page=$page" else "")
 
     override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
 
@@ -69,7 +78,7 @@ abstract class VyvyManga : HttpSource() {
                 else -> {}
             }
         }
-        return GET(url.build(), headers)
+        return corsRequest(url.build().toString())
     }
 
     override fun searchMangaParse(response: Response): MangasPage = popularMangaParse(response)
@@ -104,15 +113,17 @@ abstract class VyvyManga : HttpSource() {
         }
     }
 
-    // Pages
+    // Pages - Request chapter URL tetap pakai CORS
     override fun pageListRequest(chapter: SChapter): Request {
         if (!chapter.url.startsWith("http")) error("Refresh to reload chapters")
-        return GET(chapter.url, headers)
+        return corsRequest(chapter.url)
     }
 
+    // Pages - Parse tetap sama, gambar tidak pakai CORS
     override fun pageListParse(response: Response): List<Page> {
         val document = response.asJsoup()
         return document.select("img.d-block").mapIndexed { index, element ->
+            // Gambar langsung pakai URL asli tanpa CORS
             Page(index, imageUrl = element.absUrl("data-src"))
         }
     }
