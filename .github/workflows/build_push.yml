@@ -78,7 +78,7 @@ jobs:
 
       - name: Build extensions (${{ matrix.chunk.number }})
         env:
-          MODULES: ":src:en:vyvymanga:assembleRelease"
+          MODULES: ":src:en:vyvymanga"
           ALIAS: ${{ secrets.ALIAS }}
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
