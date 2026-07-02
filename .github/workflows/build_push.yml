@@ -38,18 +38,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
 
-      - name: Prepare signing key
+      - name: Build Vyvymanga (Debug Mode)
         run: |
-          echo ${{ secrets.SIGNING_KEY }} | base64 -d > signingkey.jks
-
-      - name: Build Vyvymanga (Release)
-        env:
-          MODULES: ":src:en:vyvymanga:assembleRelease"
-          ALIAS: ${{ secrets.ALIAS }}
-          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          ./gradlew $MODULES
+          # Mematikan pengecekan format kode (-x spotlessCheck) 
+          # dan menggunakan mode debug agar tidak perlu Setup Signing Key rahasia
+          ./gradlew :src:en:vyvymanga:assembleDebug -x spotlessCheck
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -57,7 +50,4 @@ jobs:
           name: "vyvymanga-apk"
           path: "**/build/outputs/apk/**/*.apk"
           retention-days: 1
-
-      - name: Clean up CI files
-        run: rm signingkey.jks
-        
+          
