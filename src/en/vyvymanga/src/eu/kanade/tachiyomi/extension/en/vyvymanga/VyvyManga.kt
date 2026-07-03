@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
-private const val CORS = "http://93.115.101.150:11584/proxy?url="
+private const val CORS = "https://cors-proxydev.wisp.uno/proxy?url="
 
 @Source
 abstract class VyvyManga : HttpSource() {
