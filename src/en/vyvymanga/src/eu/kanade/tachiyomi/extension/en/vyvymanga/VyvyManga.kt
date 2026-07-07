@@ -17,8 +17,6 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
-private const val CORS = "https://cors-proxydev.wisp.uno/proxy?url="
-
 @Source
 abstract class VyvyManga : HttpSource() {
 
@@ -27,15 +25,8 @@ abstract class VyvyManga : HttpSource() {
     private val dateFormat = SimpleDateFormat("MMM dd, yyy", Locale.US)
     private val relativeDateRegex = Regex("""(\d+)""")
 
-    // Helper function untuk menambahkan CORS ke URL
-    private fun String.withCors(): String = "$CORS$this"
-
-    // Helper untuk membuat request dengan CORS
-    private fun corsRequest(url: String): Request = GET(url.withCors(), headers)
-
     // Popular
-    override fun popularMangaRequest(page: Int): Request = 
-        corsRequest("$baseUrl/search" + if (page != 1) "?page=$page" else "")
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/search" + if (page != 1) "?page=$page" else "", headers)
 
     override fun popularMangaParse(response: Response): MangasPage {
         val document = response.asJsoup()
@@ -51,8 +42,7 @@ abstract class VyvyManga : HttpSource() {
     }
 
     // Latest
-    override fun latestUpdatesRequest(page: Int): Request = 
-        corsRequest("$baseUrl/search?sort=updated_at" + if (page != 1) "&page=$page" else "")
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/search?sort=updated_at" + if (page != 1) "&page=$page" else "", headers)
 
     override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
 
@@ -79,18 +69,12 @@ abstract class VyvyManga : HttpSource() {
                 else -> {}
             }
         }
-        return corsRequest(url.build().toString())
+        return GET(url.build(), headers)
     }
 
     override fun searchMangaParse(response: Response): MangasPage = popularMangaParse(response)
 
-    // Details - SEKARANG MENGGUNAKAN CORS REQUEST
-    override fun mangaDetailsRequest(manga: SManga): Request {
-        // Memastikan URL lengkap dengan domain sebelum dilempar ke CORS proxy
-        val url = if (manga.url.startsWith("http")) manga.url else baseUrl + manga.url
-        return corsRequest(url)
-    }
-
+    // Details
     override fun mangaDetailsParse(response: Response): SManga {
         val document = response.asJsoup()
         return SManga.create().apply {
@@ -120,17 +104,15 @@ abstract class VyvyManga : HttpSource() {
         }
     }
 
-    // Pages - Request chapter URL tetap pakai CORS
+    // Pages
     override fun pageListRequest(chapter: SChapter): Request {
         if (!chapter.url.startsWith("http")) error("Refresh to reload chapters")
-        return corsRequest(chapter.url)
+        return GET(chapter.url, headers)
     }
 
-    // Pages - Parse tetap sama, gambar tidak pakai CORS
     override fun pageListParse(response: Response): List<Page> {
         val document = response.asJsoup()
         return document.select("img.d-block").mapIndexed { index, element ->
-            // Gambar langsung pakai URL asli tanpa CORS
             Page(index, imageUrl = element.absUrl("data-src"))
         }
     }

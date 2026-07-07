@@ -10,6 +10,6 @@ keiyoushi {
 
     source {
         lang = "en"
-        baseUrl = "https://vymanga.net"
+        baseUrl = "https://vymanga.com"
     }
 }
