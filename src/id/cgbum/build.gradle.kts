@@ -6,7 +6,7 @@ keiyoushi {
     name = "Cgbum"
     versionCode = 2
     contentWarning = ContentWarning.NSFW
-    libVersion = "1.2"
+    libVersion = "1.4"
 
     source {
         lang = "id"
