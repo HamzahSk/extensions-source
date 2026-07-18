@@ -81,7 +81,7 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
         val requestUrl = response.request.url.toString()
 
         if (requestUrl.contains("search-suggest.php")) {
-            val searchResults = response.parseAs<List<CgbumSearchDto>>()
+            val searchResults = response.parseAs<List<CgbumDto>>()
             val mangaList = searchResults.map { dto ->
                 SManga.create().apply {
                     title = dto.title.orEmpty()
