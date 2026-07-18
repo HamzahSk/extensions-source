@@ -4,9 +4,9 @@ plugins {
 
 keiyoushi {
     name = "Cgbum"
-    versionCode = 79
-    contentWarning = ContentWarning.SAFE
-    libVersion = "1.4"
+    versionCode = 2
+    contentWarning = ContentWarning.NSFW
+    libVersion = "1.2"
 
     source {
         lang = "id"

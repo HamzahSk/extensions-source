@@ -25,9 +25,6 @@ import org.jsoup.nodes.Element
 @Source
 abstract class Cgbum : HttpSource(), ConfigurableSource {
 
-    override val name = "CGBUM"
-    override val baseUrl = "https://cgbum.com"
-    override val lang = "id"
     override val supportsLatest = true
 
     private val preferences: SharedPreferences = getPreferences()

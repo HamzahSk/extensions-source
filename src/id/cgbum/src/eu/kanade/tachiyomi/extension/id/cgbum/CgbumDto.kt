@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-class CgbumSearchDto(
+class CgbumDto(
     val title: String? = "",
     val slug: String? = "",
     val type: String? = "",
