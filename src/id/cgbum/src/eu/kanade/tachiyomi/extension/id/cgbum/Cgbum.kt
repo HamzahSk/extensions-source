@@ -1,77 +1,73 @@
 package eu.kanade.tachiyomi.extension.id.cgbum
 
+import android.content.SharedPreferences
+import androidx.preference.EditTextPreference
+import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import eu.kanade.tachiyomi.source.online.HttpSource
 import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
+import keiyoushi.utils.getPreferences
 import keiyoushi.utils.parseAs
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
 @Source
-class Cgbum : ParsedHttpSource() {
-
-    override val name = "CGBUM"
-
-    override val baseUrl = "https://cgbum.com"
+class Cgbum : HttpSource(), ConfigurableSource {
 
     override val lang = "id"
-
     override val supportsLatest = true
 
-    override val client: OkHttpClient = network.client.newBuilder()
+    private val preferences: SharedPreferences = getPreferences()
+
+    override val client = network.client.newBuilder()
         .rateLimit(3)
         .build()
 
-    // ====== POPULAR MANGA (Menggunakan Halaman Filter Kosong Sebagai Default Popular) ======
     override fun popularMangaRequest(page: Int): Request {
         return GET("$baseUrl/daftar-komik?page=$page", headers)
     }
 
-    override fun popularMangaSelector() = ".comic-grid .comic-card"
-
-    override fun popularMangaFromElement(element: Element): SManga = SManga.create().apply {
-        val titleEl = element.select(".comic-card-title a")
-        title = titleEl.text().trim()
-        url = titleEl.attr("href").substringAfter(baseUrl)
-        thumbnail_url = element.select(".comic-card-cover img").attr("abs:src")
+    override fun popularMangaParse(response: Response): MangasPage {
+        val document = Jsoup.parse(response.body.string(), baseUrl)
+        val mangas = document.select(".comic-grid .comic-card").map { element ->
+            SManga.create().apply {
+                val titleEl = element.select(".comic-card-title a")
+                title = titleEl.text().trim()
+                url = titleEl.attr("href").substringAfter(baseUrl)
+                thumbnail_url = element.select(".comic-card-cover img").attr("abs:src")
+            }
+        }
+        val hasNextPage = document.select("ul.pagination li.page-item:not(.disabled) a[rel=next]").first() != null
+        return MangasPage(mangas, hasNextPage)
     }
 
-    override fun popularMangaNextPageSelector() = "ul.pagination li.page-item:not(.disabled) a[rel=next]"
-
-    // ====== LATEST UPDATES ======
     override fun latestUpdatesRequest(page: Int): Request {
         return GET("$baseUrl/last-update?page=$page", headers)
     }
 
-    override fun latestUpdatesSelector() = popularMangaSelector()
+    override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
 
-    override fun latestUpdatesFromElement(element: Element): SManga = popularMangaFromElement(element)
-
-    override fun latestUpdatesNextPageSelector() = popularMangaNextPageSelector()
-
-    // ====== SEARCH & FILTER MANGA ======
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         return if (query.isNotEmpty()) {
-            // Menggunakan endpoint pencarian JSON jika user mengetik kata kunci
             val url = "$baseUrl/search-suggest.php".toHttpUrl().newBuilder()
                 .addQueryParameter("q", query)
                 .build()
             GET(url, headers)
         } else {
-            // Menggunakan endpoint filter jika pencarian teks kosong
             val url = "$baseUrl/daftar-komik".toHttpUrl().newBuilder()
                 .addQueryParameter("page", page.toString())
-            
+
             filters.filterIsInstance<UriFilter>().forEach {
                 it.addToUri(url)
             }
@@ -81,8 +77,7 @@ class Cgbum : ParsedHttpSource() {
 
     override fun searchMangaParse(response: Response): MangasPage {
         val requestUrl = response.request.url.toString()
-        
-        // Cek apakah request berasal dari search-suggest.php (JSON)
+
         if (requestUrl.contains("search-suggest.php")) {
             val searchResults = response.parseAs<List<CgbumSearchDto>>()
             val mangaList = searchResults.map { dto ->
@@ -94,38 +89,37 @@ class Cgbum : ParsedHttpSource() {
             }
             return MangasPage(mangaList, false)
         }
-        
-        // Jika bukan dari API search, parse dengan selector HTML biasa (fitur filter)
-        return super.searchMangaParse(response)
+
+        return popularMangaParse(response)
     }
 
-    override fun searchMangaSelector() = popularMangaSelector()
+    override fun mangaDetailsRequest(manga: SManga): Request {
+        return GET(baseUrl + manga.url, headers)
+    }
 
-    override fun searchMangaFromElement(element: Element): SManga = popularMangaFromElement(element)
-
-    override fun searchMangaNextPageSelector() = popularMangaNextPageSelector()
-
-    // ====== MANGA DETAILS ======
-    override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
+    override fun mangaDetailsParse(response: Response): SManga {
+        val document = Jsoup.parse(response.body.string(), baseUrl)
         val container = document.select(".comic-detail")
-        title = container.select(".comic-info h1").text().trim()
-        thumbnail_url = container.select(".comic-cover img").attr("abs:src")
-        status = container.select(".badge-status").text().trim().toStatus()
-        
-        val type = container.select(".badge-type-text").text().trim()
-        val genres = container.select(".comic-genres .genre-pill").map { it.text().trim() }
-        genre = (listOf(type) + genres).filter { it.isNotBlank() }.joinToString()
 
-        // Ambil metadata tabel author & tahun
-        var authorName: String? = null
-        container.select(".comic-meta-simple .meta-row").forEach { row ->
-            val label = row.select(".meta-label").text().lowercase().trim()
-            val value = row.select(".meta-value").text().trim()
-            if (label.contains("author")) authorName = value
+        return SManga.create().apply {
+            title = container.select(".comic-info h1").text().trim()
+            thumbnail_url = container.select(".comic-cover img").attr("abs:src")
+            status = container.select(".badge-status").text().trim().toStatus()
+
+            val type = container.select(".badge-type-text").text().trim()
+            val genres = container.select(".comic-genres .genre-pill").map { it.text().trim() }
+            genre = (listOf(type) + genres).filter { it.isNotBlank() }.joinToString()
+
+            var authorName: String? = null
+            container.select(".comic-meta-simple .meta-row").forEach { row ->
+                val label = row.select(".meta-label").text().lowercase().trim()
+                val value = row.select(".meta-value").text().trim()
+                if (label.contains("author")) authorName = value
+            }
+            author = authorName
+
+            description = container.select(".synopsis-content").text().trim()
         }
-        author = authorName
-
-        description = container.select(".synopsis-content").text().trim()
     }
 
     private fun String.toStatus(): Int = when (this.lowercase()) {
@@ -134,18 +128,25 @@ class Cgbum : ParsedHttpSource() {
         else -> SManga.UNKNOWN
     }
 
-    // ====== CHAPTER LIST ======
-    override fun chapterListSelector() = ".chapter-grid .ch-grid-item"
+    override fun chapterListRequest(manga: SManga): Request = mangaDetailsRequest(manga)
 
-    override fun chapterListFromElement(element: Element): SChapter = SChapter.create().apply {
-        url = element.attr("href").substringAfter(baseUrl)
-        name = element.attr("title").ifEmpty { "Chapter ${element.attr("data-chapter")}" }
-        // Format tanggal tidak disediakan di DOM element .ch-grid-item secara eksplisit
-        date_upload = 0L 
+    override fun chapterListParse(response: Response): List<SChapter> {
+        val document = Jsoup.parse(response.body.string(), baseUrl)
+        return document.select(".chapter-grid .ch-grid-item").map { element ->
+            SChapter.create().apply {
+                url = element.attr("href").substringAfter(baseUrl)
+                name = element.attr("title").ifEmpty { "Chapter ${element.attr("data-chapter")}" }
+                date_upload = 0L
+            }
+        }
     }
 
-    // ====== PAGE LIST ======
-    override fun pageListParse(document: Document): List<Page> {
+    override fun pageListRequest(chapter: SChapter): Request {
+        return GET(baseUrl + chapter.url, headers)
+    }
+
+    override fun pageListParse(response: Response): List<Page> {
+        val document = Jsoup.parse(response.body.string(), baseUrl)
         return document.select(".reader-images .page-container").mapIndexed { index, element ->
             val imageUrl = element.attr("abs:data-url")
             Page(index = index, imageUrl = imageUrl)
@@ -154,7 +155,42 @@ class Cgbum : ParsedHttpSource() {
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
-    // ====== FILTERS DEFINITION ======
+    override fun imageRequest(page: Page): Request {
+        val newHeaders = headersBuilder()
+            .add("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+            .add("DNT", "1")
+            .add("referer", "$baseUrl/")
+            .add("sec-fetch-dest", "empty")
+            .add("Sec-GPC", "1")
+            .build()
+
+        var imageUrl = page.imageUrl!!
+        val proxyUrl = preferences.getString(PREF_PROXY_URL, "")?.trim()
+
+        if (!proxyUrl.isNullOrEmpty()) {
+            imageUrl = if (proxyUrl.contains("%s")) {
+                proxyUrl.format(imageUrl)
+            } else {
+                "$proxyUrl$imageUrl"
+            }
+        }
+
+        return GET(imageUrl, newHeaders)
+    }
+
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        EditTextPreference(screen.context).apply {
+            key = PREF_PROXY_URL
+            title = "Image Compression Proxy URL"
+            summary = "Kosongkan jika tidak ingin digunakan. Masukkan URL proxy penanganan kompresi gambar kamu. Gunakan '%s' sebagai placeholder untuk URL gambar asli jika proxy membutuhkannya di tengah parameter.\n\nContoh:\nhttps://domain.com/endpoint?url=%s&quality=80\natau\nhttps://images.weserv.nl/?url="
+            setDefaultValue("")
+
+            setOnPreferenceChangeListener { _, _ ->
+                true
+            }
+        }.let(screen::addPreference)
+    }
+
     override fun getFilterList(): FilterList = FilterList(
         TypeFilter(),
         StatusFilter(),
@@ -204,4 +240,8 @@ class Cgbum : ParsedHttpSource() {
         Pair("gore", "gore"), Pair("horror", "horror"), Pair("manga", "manga"),
         Pair("manhwa", "manhwa"),
     )
+
+    companion object {
+        private const val PREF_PROXY_URL = "pref_proxy_url"
+    }
 }
