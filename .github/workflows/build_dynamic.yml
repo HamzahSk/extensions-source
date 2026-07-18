@@ -1,0 +1,89 @@
+name: CI Dynamic Extension Build & Sign
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Sign Changed Extensions
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # Memerlukan commit sebelumnya untuk membandingkan git diff
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check Formatting (Spotless)
+        run: |
+          echo "Melakukan perbaikan dan pengecekan kode..."
+          ./gradlew spotlessApply
+          ./gradlew spotlessCheck
+
+      - name: Prepare Signing Key
+        run: |
+          # Mendekode keystore JKS dari GitHub Secrets
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > signingkey.jks
+
+      - name: Detect Changes and Build Release
+        env:
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # 1. Mendapatkan daftar file yang berubah
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+          
+          # 2. Ekstraksi otomatis menjadi format task gradle ':src:lang:extension:assembleRelease'
+          CHANGED_MODULES=$(echo "$CHANGED_FILES" | grep '^src/' | awk -F/ '{print ":"$1":"$2":"$3":assembleRelease"}' | sort -u)
+          
+          if [ -z "$CHANGED_MODULES" ]; then
+            echo "Tidak ada perubahan kode ekstensi di dalam direktori src/."
+            exit 0
+          fi
+          
+          echo "Daftar modul release yang akan di-build:"
+          echo "$CHANGED_MODULES"
+          echo "----------------------------------------"
+          
+          # 3. Menjalankan kompilasi untuk setiap ekstensi yang kodenya berubah
+          for TASK in $CHANGED_MODULES; do
+            echo "Memulai build untuk tugas: $TASK"
+            ./gradlew $TASK
+          done
+
+      - name: Clean up Signing Key
+        if: always()
+        run: |
+          # Menghapus file keystore demi keamanan setelah build selesai
+          rm -f signingkey.jks
+
+      - name: Upload Signed APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "signed-extensions-apks"
+          path: "**/build/outputs/apk/**/*.apk"
+          retention-days: 5
+          

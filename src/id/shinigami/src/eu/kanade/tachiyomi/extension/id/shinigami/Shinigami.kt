@@ -1,6 +1,10 @@
 package eu.kanade.tachiyomi.extension.id.shinigami
 
+import android.content.SharedPreferences
+import androidx.preference.EditTextPreference
+import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -9,6 +13,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
+import keiyoushi.utils.getPreferences
 import keiyoushi.utils.parseAs
 import keiyoushi.utils.tryParse
 import okhttp3.Headers
@@ -19,12 +24,14 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 @Source
-abstract class Shinigami : HttpSource() {
+abstract class Shinigami : HttpSource(), ConfigurableSource {
     private val apiUrl = "https://api.shngm.io"
 
     private val cdnUrl = "https://storage.shngm.id"
 
     override val supportsLatest = true
+
+    private val preferences: SharedPreferences = getPreferences()
 
     private val apiHeaders: Headers by lazy { apiHeadersBuilder().build() }
 
@@ -246,10 +253,38 @@ abstract class Shinigami : HttpSource() {
             .add("Sec-GPC", "1")
             .build()
 
-        return GET(page.imageUrl!!, newHeaders)
+        var imageUrl = page.imageUrl!!
+        val proxyUrl = preferences.getString(PREF_PROXY_URL, "")?.trim()
+
+        // Jika user mengisi proxy URL, kita bungkus image url aslinya ke dalam proxy tersebut
+        if (!proxyUrl.isNullOrEmpty()) {
+            imageUrl = if (proxyUrl.contains("%s")) {
+                proxyUrl.format(imageUrl)
+            } else {
+                // Jika user tidak memasukkan format %s, otomatis gabungkan di akhir string proxy
+                "$proxyUrl$imageUrl"
+            }
+        }
+
+        return GET(imageUrl, newHeaders)
+    }
+
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        EditTextPreference(screen.context).apply {
+            key = PREF_PROXY_URL
+            title = "Image Compression Proxy URL"
+            summary = "Kosongkan jika tidak ingin digunakan. Masukkan URL proxy penanganan kompresi gambar kamu. Gunakan '%s' sebagai placeholder untuk URL gambar asli jika proxy membutuhkannya di tengah parameter.\n\nContoh:\nhttps://domain.com/endpoint?url=%s&quality=80\natau\nhttps://images.weserv.nl/?url="
+            setDefaultValue("")
+
+            setOnPreferenceChangeListener { _, newValue ->
+                val newValueString = newValue as String
+                true
+            }
+        }.let(screen::addPreference)
     }
 
     companion object {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ENGLISH)
+        private const val PREF_PROXY_URL = "pref_proxy_url"
     }
 }
