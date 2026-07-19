@@ -223,8 +223,9 @@ abstract class Shinigami : HttpSource(), ConfigurableSource {
         date_upload = dateFormat.tryParse(obj.date)
         name = "Chapter ${obj.name.toString().replace(".0","")} ${obj.title}"
         url = obj.chapterId
-        preview = obj.thumbnailImageUrl
+        scanlator = if (!obj.thumbnailImageUrl.isNullOrEmpty()) obj.thumbnailImageUrl else ""
     }
+    
 
     override fun pageListRequest(chapter: SChapter): Request {
         // Migration from old web urls to the new api based
