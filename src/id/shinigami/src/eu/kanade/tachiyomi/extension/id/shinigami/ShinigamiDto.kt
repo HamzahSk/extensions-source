@@ -50,6 +50,7 @@ class ShinigamiChapterListDataDto(
     @SerialName("chapter_title") val title: String = "",
     @SerialName("chapter_number") val name: Double = 0.0,
     @SerialName("chapter_id") val chapterId: String = "",
+    @SerialName("thumbnail_image_url") val thumbnailImageUrl: String? = ""
 )
 
 @Serializable
