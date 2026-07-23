@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.extension.id.cgbum
 
 import android.content.SharedPreferences
 import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
+import androidx.preference.SwitchPreferenceCompat
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -164,13 +166,24 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
             .build()
 
         var imageUrl = page.imageUrl!!
-        val proxyUrl = preferences.getString(PREF_PROXY_URL, "")?.trim()
+        
+        val useWpProxy = preferences.getBoolean(PREF_USE_WP_PROXY, false)
 
-        if (!proxyUrl.isNullOrEmpty()) {
-            imageUrl = if (proxyUrl.contains("%s")) {
-                proxyUrl.format(imageUrl)
-            } else {
-                "$proxyUrl$imageUrl"
+        if (useWpProxy) {
+            // Ambil settingan kualitas, default ke 50 jika kosong
+            val quality = preferences.getString(PREF_WP_QUALITY, "50") ?: "50"
+            // Hapus http:// atau https:// dari URL asli untuk dimasukkan ke URL wp proxy
+            val urlWithoutScheme = imageUrl.replaceFirst(Regex("^https?://"), "")
+            imageUrl = "https://i0.wp.com/$urlWithoutScheme?q=$quality"
+        } else {
+            // Logika custom proxy lama (berjalan kalau WP Proxy dimatikan)
+            val proxyUrl = preferences.getString(PREF_PROXY_URL, "")?.trim()
+            if (!proxyUrl.isNullOrEmpty()) {
+                imageUrl = if (proxyUrl.contains("%s")) {
+                    proxyUrl.format(imageUrl)
+                } else {
+                    "$proxyUrl$imageUrl"
+                }
             }
         }
 
@@ -178,17 +191,46 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
     }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        EditTextPreference(screen.context).apply {
+        val useWpProxyPref = SwitchPreferenceCompat(screen.context).apply {
+            key = PREF_USE_WP_PROXY
+            title = "Gunakan WordPress Proxy (i0.wp.com)"
+            summary = "Kompres gambar menggunakan proxy WP untuk menghemat kuota (menonaktifkan Custom Proxy di bawah)."
+            setDefaultValue(false)
+        }
+        screen.addPreference(useWpProxyPref)
+
+        val wpQualityPref = ListPreference(screen.context).apply {
+            key = PREF_WP_QUALITY
+            title = "Kualitas Gambar WP Proxy"
+            entries = arrayOf("Rendah (30%)", "Sedang (50%)", "Tinggi (70%)", "Sangat Tinggi (90%)")
+            entryValues = arrayOf("30", "50", "70", "90")
+            setDefaultValue("50")
+            summary = "Pilih persentase kualitas gambar (Aktif jika WP Proxy dinyalakan)."
+        }
+        screen.addPreference(wpQualityPref)
+
+        val customProxyPref = EditTextPreference(screen.context).apply {
             key = PREF_PROXY_URL
             title = "Image Compression Proxy URL"
-            summary = "Kosongkan jika tidak ingin digunakan. Masukkan URL proxy penanganan kompresi gambar kamu. Gunakan '%s' sebagai placeholder untuk URL gambar asli jika proxy membutuhkannya di tengah parameter.\n\nContoh:\nhttps://domain.com/endpoint?url=%s&quality=80\natau\nhttps://images.weserv.nl/?url="
+            summary = "Kosongkan jika tidak ingin digunakan. Masukkan URL proxy penanganan kompresi gambar kamu...\n(Aktif jika WP Proxy dimatikan)"
             setDefaultValue("")
+        }
+        screen.addPreference(customProxyPref)
 
-            setOnPreferenceChangeListener { _, _ ->
-                true
-            }
-        }.let(screen::addPreference)
+        // Setup state awal (nyala/mati) berdasarkan preferensi yang tersimpan
+        val isWpProxyEnabled = preferences.getBoolean(PREF_USE_WP_PROXY, false)
+        wpQualityPref.isEnabled = isWpProxyEnabled
+        customProxyPref.isEnabled = !isWpProxyEnabled
+
+        // Listener untuk mengubah state secara dinamis ketika switch ditekan
+        useWpProxyPref.setOnPreferenceChangeListener { _, newValue ->
+            val enabled = newValue as Boolean
+            wpQualityPref.isEnabled = enabled
+            customProxyPref.isEnabled = !enabled
+            true
+        }
     }
+
 
     override fun getFilterList(): FilterList = FilterList(
         TypeFilter(),
@@ -242,5 +284,7 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
 
     companion object {
         private const val PREF_PROXY_URL = "pref_proxy_url"
+        private const val PREF_USE_WP_PROXY = "pref_use_wp_proxy"
+        private const val PREF_WP_QUALITY = "pref_wp_quality"
     }
 }

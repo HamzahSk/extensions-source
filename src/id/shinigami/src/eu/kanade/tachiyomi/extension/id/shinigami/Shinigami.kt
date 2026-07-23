@@ -97,8 +97,6 @@ abstract class Shinigami : HttpSource(), ConfigurableSource {
     }
 
     override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
-    
-    override fun recomendationsParse(response: Response): MangasPage = popularMangaParse(response)
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val url = "$apiUrl/v1/manga/list".toHttpUrl().newBuilder()
