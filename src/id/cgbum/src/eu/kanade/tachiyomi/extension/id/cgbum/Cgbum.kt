@@ -219,14 +219,14 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
 
         // Setup state awal (nyala/mati) berdasarkan preferensi yang tersimpan
         val isWpProxyEnabled = preferences.getBoolean(PREF_USE_WP_PROXY, false)
-        wpQualityPref.setEnabled = isWpProxyEnabled
-        customProxyPref.setEnabled = !isWpProxyEnabled
+        wpQualityPref.setEnabled(isWpProxyEnabled)
+        customProxyPref.setEnabled(!isWpProxyEnabled)
 
         // Listener untuk mengubah state secara dinamis ketika switch ditekan
         useWpProxyPref.setOnPreferenceChangeListener { _, newValue ->
             val enabled = newValue as Boolean
-            wpQualityPref.setEnabled = enabled
-            customProxyPref.setEnabled = !enabled
+            wpQualityPref.setEnabled(enabled)
+            customProxyPref.setEnabled(!enabled)
             true
         }
     }
