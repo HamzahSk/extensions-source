@@ -2,7 +2,9 @@ package eu.kanade.tachiyomi.extension.id.shinigami
 
 import android.content.SharedPreferences
 import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreferenceCompat
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -28,6 +30,8 @@ abstract class Shinigami : HttpSource(), ConfigurableSource {
     private val apiUrl = "https://api.shngm.io"
 
     private val cdnUrl = "https://storage.shngm.id"
+    
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
 
     override val supportsLatest = true
 

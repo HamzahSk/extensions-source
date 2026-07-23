@@ -281,7 +281,7 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
         Pair("gore", "gore"), Pair("horror", "horror"), Pair("manga", "manga"),
         Pair("manhwa", "manhwa"),
     )
- 
+
     companion object {
         private const val PREF_PROXY_URL = "pref_proxy_url"
         private const val PREF_USE_WP_PROXY = "pref_use_wp_proxy"
