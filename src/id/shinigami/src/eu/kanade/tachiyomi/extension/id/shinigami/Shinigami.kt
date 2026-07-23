@@ -267,7 +267,7 @@ abstract class Shinigami : HttpSource(), ConfigurableSource {
             val quality = preferences.getString(PREF_WP_QUALITY, "50") ?: "50"
             // Hapus http:// atau https:// dari URL asli untuk dimasukkan ke URL wp proxy
             val urlWithoutScheme = imageUrl.replaceFirst(Regex("^https?://"), "")
-            imageUrl = "https://i0.wp.com/$urlWithoutScheme?q=$quality"
+            imageUrl = "https://i0.wp.com/$urlWithoutScheme?quality=$quality"
         } else {
             // Logika custom proxy lama (berjalan kalau WP Proxy dimatikan)
             val proxyUrl = preferences.getString(PREF_PROXY_URL, "")?.trim()
