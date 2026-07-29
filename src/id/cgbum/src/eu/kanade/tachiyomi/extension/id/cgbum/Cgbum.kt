@@ -49,7 +49,7 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
                 thumbnail_url = element.select(".comic-card-cover img").attr("abs:src")
             }
         }
-        val hasNextPage = document.select("ul.pagination li.page-item:not(.disabled) a[rel=next]").first() != null
+        val hasNextPage = document.select("nav.pagination a[rel=next]").isNotEmpty()
         return MangasPage(mangas, hasNextPage)
     }
 
