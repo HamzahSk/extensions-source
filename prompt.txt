@@ -1,0 +1,29 @@
+# Task: Fix Image Loading & Cookie Authorization in `src/id/cgbum`
+
+## Overview
+Ekstensi `cgbum` (`src/id/cgbum`) saat ini mengalami masalah pada proses *load* gambar komik (image loading/page list). Kita perlu menambahkan **header Cookie** pada setiap request gambar agar gambar bisa di-load dengan benar. Cookie ini harus didapatkan/diambil terlebih dahulu dari halaman detail manga/komik.
+
+---
+
+## Technical Requirements & Steps
+
+### Step 1: Analisis Mekanisme Pengambilan Cookie
+1. Cari tahu bagaimana mekanisme pengambilan cookie dari halaman detail komik di source web target (`src/id/cgbum`).
+2. Gunakan `client.cookieJar.loadForRequest(url)` atau interceptor HTTP (OkHttp) di dalam `src/id/cgbum` untuk mengambil/menyimpan cookie yang ter-set saat memuat `mangaDetailsRequest` / `mangaDetailsParse`.
+3. Pastikan cookie yang dibutuhkan untuk memuat gambar tersimpan dengan benar di session atau dikelola secara otomatis oleh `CookieJar` dari OkHttp client.
+
+### Step 2: Modifikasi Header untuk Image Loading
+1. Modifikasi bagian `imageRequest(page: Page): Request` atau `fetchImage(page: Page)` pada generator/source ekstensi.
+2. Pastikan request gambar menyertakan header `Cookie` yang didapatkan dari halaman detail sebelumnya.
+3. Contoh implementasi yang diharapkan (sesuaikan dengan arsitektur `cgbum`):
+   - Tambahkan cookie ke dalam `headersBuilder()` untuk setiap request gambar, ATAU
+   - Pastikan OkHttp `client` yang digunakan untuk `fetchImage` memanfaatkan `CookieJar` yang sudah menyimpan cookie dari halaman detail.
+
+### Step 3: Refactoring & Verification
+1. Pastikan tidak ada *hardcoded* cookie (cookie harus diambil secara dinamis).
+2. Hindari *memory leak* atau *infinite loop* saat mencoba mengambil cookie.
+3. Pastikan ekstensi tetap kompatibel dengan standar API Mihon / Tachiyomi Extensions.
+
+### Step 4: Testing & Clean Code (WAJIB)
+1. Jalankan `./gradlew spotlessApply` untuk merapikan format kode.
+2. Jalankan `./gradlew testDebugUnitTest` dan pastikan **BUILD SUCCESSFUL**.
