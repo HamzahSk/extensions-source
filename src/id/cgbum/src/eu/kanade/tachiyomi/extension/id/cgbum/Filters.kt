@@ -16,7 +16,8 @@ open class UriPartFilter(
     name,
     vals.map { it.first }.toTypedArray(),
     vals.indexOfFirst { it.second == default }.takeIf { it != -1 } ?: 0,
-), UriFilter {
+),
+    UriFilter {
     override fun addToUri(builder: HttpUrl.Builder) {
         val selected = vals[state].second
         if (selected.isNotEmpty()) {
@@ -34,39 +35,43 @@ open class UriMultiSelectFilter(
 ) : Filter.Group<UriMultiSelectOption>(
     name,
     options.map { UriMultiSelectOption(it.first, it.second) },
-), UriFilter {
+),
+    UriFilter {
     override fun addToUri(builder: HttpUrl.Builder) {
-        state.filter { it.state }.forEach { 
+        state.filter { it.state }.forEach {
             // Format array parameter agar menghasilkan &genres[]=...
             builder.addQueryParameter("$param[]", it.value)
         }
     }
 }
 
-class TypeFilter : UriPartFilter(
-    "Type",
-    "type",
-    arrayOf(
-        Pair("All", ""),
-        Pair("Manga", "manga"),
-        Pair("Manhwa", "manhwa"),
-        Pair("Manhua", "manhua"),
-        Pair("Pornhwa", "pornhwa"),
-    ),
-)
+class TypeFilter :
+    UriPartFilter(
+        "Type",
+        "type",
+        arrayOf(
+            Pair("All", ""),
+            Pair("Manga", "manga"),
+            Pair("Manhwa", "manhwa"),
+            Pair("Manhua", "manhua"),
+            Pair("Pornhwa", "pornhwa"),
+        ),
+    )
 
-class StatusFilter : UriPartFilter(
-    "Status",
-    "status",
-    arrayOf(
-        Pair("All", ""),
-        Pair("Ongoing", "ongoing"),
-        Pair("Tamat", "tamat"),
-    ),
-)
+class StatusFilter :
+    UriPartFilter(
+        "Status",
+        "status",
+        arrayOf(
+            Pair("All", ""),
+            Pair("Ongoing", "ongoing"),
+            Pair("Tamat", "tamat"),
+        ),
+    )
 
-class GenreFilter(genres: Array<Pair<String, String>>) : UriMultiSelectFilter(
-    "Genres",
-    "genres",
-    genres,
-)
+class GenreFilter(genres: Array<Pair<String, String>>) :
+    UriMultiSelectFilter(
+        "Genres",
+        "genres",
+        genres,
+    )

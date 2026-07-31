@@ -3,8 +3,8 @@ package eu.kanade.tachiyomi.extension.id.cgbum
 import android.content.SharedPreferences
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
-import androidx.preference.SwitchPreferenceCompat
 import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreferenceCompat
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -21,11 +21,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
 
 @Source
-abstract class Cgbum : HttpSource(), ConfigurableSource {
+abstract class Cgbum :
+    HttpSource(),
+    ConfigurableSource {
 
     override val supportsLatest = true
 
@@ -35,9 +35,7 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
         .rateLimit(3)
         .build()
 
-    override fun popularMangaRequest(page: Int): Request {
-        return GET("$baseUrl/daftar-komik?page=$page", headers)
-    }
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/daftar-komik?page=$page", headers)
 
     override fun popularMangaParse(response: Response): MangasPage {
         val document = Jsoup.parse(response.body.string(), baseUrl)
@@ -53,27 +51,23 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
         return MangasPage(mangas, hasNextPage)
     }
 
-    override fun latestUpdatesRequest(page: Int): Request {
-        return GET("$baseUrl/last-update?page=$page", headers)
-    }
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/last-update?page=$page", headers)
 
     override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
 
-    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        return if (query.isNotEmpty()) {
-            val url = "$baseUrl/search-suggest.php".toHttpUrl().newBuilder()
-                .addQueryParameter("q", query)
-                .build()
-            GET(url, headers)
-        } else {
-            val url = "$baseUrl/daftar-komik".toHttpUrl().newBuilder()
-                .addQueryParameter("page", page.toString())
+    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request = if (query.isNotEmpty()) {
+        val url = "$baseUrl/search-suggest.php".toHttpUrl().newBuilder()
+            .addQueryParameter("q", query)
+            .build()
+        GET(url, headers)
+    } else {
+        val url = "$baseUrl/daftar-komik".toHttpUrl().newBuilder()
+            .addQueryParameter("page", page.toString())
 
-            filters.filterIsInstance<UriFilter>().forEach {
-                it.addToUri(url)
-            }
-            GET(url.build(), headers)
+        filters.filterIsInstance<UriFilter>().forEach {
+            it.addToUri(url)
         }
+        GET(url.build(), headers)
     }
 
     override fun searchMangaParse(response: Response): MangasPage {
@@ -94,9 +88,7 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
         return popularMangaParse(response)
     }
 
-    override fun mangaDetailsRequest(manga: SManga): Request {
-        return GET(baseUrl + manga.url, headers)
-    }
+    override fun mangaDetailsRequest(manga: SManga): Request = GET(baseUrl + manga.url, headers)
 
     override fun mangaDetailsParse(response: Response): SManga {
         val document = Jsoup.parse(response.body.string(), baseUrl)
@@ -123,6 +115,9 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
         }
     }
 
+    private fun getSessionCookies(): String = client.cookieJar.loadForRequest(baseUrl.toHttpUrl())
+        .joinToString("; ") { "${it.name}=${it.value}" }
+
     private fun String.toStatus(): Int = when (this.lowercase()) {
         "ongoing" -> SManga.ONGOING
         "tamat" -> SManga.COMPLETED
@@ -142,9 +137,7 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
         }
     }
 
-    override fun pageListRequest(chapter: SChapter): Request {
-        return GET(baseUrl + chapter.url, headers)
-    }
+    override fun pageListRequest(chapter: SChapter): Request = GET(baseUrl + chapter.url, headers)
 
     override fun pageListParse(response: Response): List<Page> {
         val document = Jsoup.parse(response.body.string(), baseUrl)
@@ -163,10 +156,16 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
             .add("referer", "$baseUrl/")
             .add("sec-fetch-dest", "empty")
             .add("Sec-GPC", "1")
+            .apply {
+                val cookies = getSessionCookies()
+                if (cookies.isNotEmpty()) {
+                    set("Cookie", cookies)
+                }
+            }
             .build()
 
         var imageUrl = page.imageUrl!!
-        
+
         val useWpProxy = preferences.getBoolean(PREF_USE_WP_PROXY, false)
 
         if (useWpProxy) {
@@ -230,7 +229,6 @@ abstract class Cgbum : HttpSource(), ConfigurableSource {
             true
         }
     }
-
 
     override fun getFilterList(): FilterList = FilterList(
         TypeFilter(),
