@@ -111,28 +111,43 @@ abstract class MirrorInKomik :
     private fun login() {
         val username = usernamePref.orEmpty()
         val password = passwordPref.orEmpty()
+        
         if (username.isBlank() || password.isBlank()) {
             throw IOException("Set your MirrorInKomik username and password in the source settings to read chapters.")
         }
 
-        // Fetch the login page to obtain the CSRF token.
-        val loginPageRequest = GET("$baseUrl/login")
-        val loginPageResponse = client.newCall(loginPageRequest).execute()
-        val document = loginPageResponse.use { it.asJsoup() }
+        // 1. Client khusus GET: Cegat dan hapus cookie lama sebelum berangkat ke server
+        val getLoginClient = client.newBuilder()
+            .addNetworkInterceptor { chain ->
+                val cleanRequest = chain.request().newBuilder()
+                    .removeHeader("Cookie")
+                    .build()
+                chain.proceed(cleanRequest)
+            }
+            .build()
+
+        // 2. Ambil halaman login tanpa cookie (Cookie baru dari server otomatis masuk ke CookieJar utama)
+        val loginPageRequest = GET("$baseUrl/login", headers)
+        val document = getLoginClient.newCall(loginPageRequest).execute().use { it.asJsoup() }
+        
         val csrf = document.selectFirst("input[name=csrf_test_name]")?.attr("value")
             ?: throw IOException("Could not load the login page.")
 
+        // 3. Eksekusi POST login pakai client utama dengan data form
         val formBody = FormBody.Builder()
             .addEncoded("csrf_test_name", csrf)
             .addEncoded("login", username)
             .addEncoded("password", password)
             .build()
+            
         val loginRequest = POST("$baseUrl/login", headersBuilder().build(), formBody)
+        
         client.newCall(loginRequest).execute().use { response ->
             if (response.code !in 200..399) {
                 throw IOException("Login failed (HTTP ${response.code}). Check your credentials.")
             }
         }
+        
         if (!isLoggedIn()) {
             throw IOException("Login failed. Check your credentials.")
         }
