@@ -58,8 +58,7 @@ abstract class MirrorInKomik :
         .addInterceptor(::loginInterceptor)
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
-        
-        
+
     // Menambahkan header default untuk semua request, termasuk load thumbnail Coil
     override fun headersBuilder(): Headers.Builder = super.headersBuilder()
         .add("X-Requested-With", "XMLHttpRequest")
@@ -67,8 +66,7 @@ abstract class MirrorInKomik :
         .add("Sec-Fetch-Mode", "cors")
         .add("Sec-Fetch-Dest", "empty")
         .add("Referer", "$baseUrl/")
-        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36") 
-
+        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
 
     // The reader page requires a logged-in session; the listchap endpoint requires
     // the full browser header set (User-Agent + Accept-Language + XHR + Sec-Fetch trio).
@@ -99,27 +97,33 @@ abstract class MirrorInKomik :
         // 1. Jalankan request ke server
         var response = chain.proceed(request)
 
-        // 2. Tangkap kondisi khusus: 
-        // - Apakah HTTP code-nya 302?
+        // 2. Tangkap kondisi khusus:
+        // - Apakah HTTP code-nya 302 / 401 / 403?
         // - ATAU apakah OkHttp secara otomatis sudah mengikuti redirect 302 itu ke "/login"?
-        val isCode302 = response.code == 302
+        val isCodeUnauthorized = response.code == 302 || response.code == 401 || response.code == 403
         val isRedirectedToLogin = response.request.url.encodedPath.startsWith("/login")
+        val alreadyRetried = request.header(RETRY_HEADER) != null
 
-        // Pokoknya kalo 302 atau terlempar ke login, langsung eksekusi!
-        if (isCode302 || isRedirectedToLogin) {
+        // Pokoknya kalo belum pernah retry dan dapat 302/401/403 atau terlempar ke login,
+        // langsung eksekusi! Kalau udah pernah retry, biarkan response apa adanya biar
+        // nggak terjadi infinite loop.
+        if (!alreadyRetried && (isCodeUnauthorized || isRedirectedToLogin)) {
             // Wajib tutup (close) body dari response lama biar nggak memory leak
             response.close()
-            
+
             // Paksa login untuk mendapatkan session/cookie baru
             login()
-            
-            // Ulangi request aslinya (kali ini cookie baru akan otomatis menempel)
-            response = chain.proceed(request)
+
+            // Ulangi request aslinya (kali ini cookie baru akan otomatis menempel),
+            // kasih tanda header supaya kalau server masih melempar 302 kita nggak retry lagi.
+            val retryRequest = request.newBuilder()
+                .header(RETRY_HEADER, "true")
+                .build()
+            response = chain.proceed(retryRequest)
         }
 
         return response
     }
-
 
     private fun isLoggedIn(): Boolean = client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
 
@@ -404,6 +408,7 @@ abstract class MirrorInKomik :
         private const val PREF_USERNAME = "username"
         private const val PREF_PASSWORD = "password"
         private const val SESSION_COOKIE = "ci_session"
+        private const val RETRY_HEADER = "X-Auth-Retry"
 
         private val genreValues = arrayOf(
             "Action",
@@ -428,7 +433,7 @@ abstract class MirrorInKomik :
             "Slice of Life",
             "Supernatural",
             "Webtoons",
-            "Yaoi"
+            "Yaoi",
         )
     }
 }
