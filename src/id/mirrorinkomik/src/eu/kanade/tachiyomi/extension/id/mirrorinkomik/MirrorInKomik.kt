@@ -119,14 +119,28 @@ abstract class MirrorInKomik :
             .addEncoded("login", username)
             .addEncoded("password", password)
             .build()
-        val loginRequest = POST("$baseUrl/login", headersBuilder().build(), formBody)
-        client.newCall(loginRequest).execute().use { response ->
-            if (response.code !in 200..399) {
-                throw IOException("Login failed (HTTP ${response.code}). Check your credentials.")
+            
+        var loginSuccess = false
+        val maxTries = 2
+
+        for (attempt in 1..maxTries) {
+            val loginRequest = POST("$baseUrl/login", headersBuilder().build(), formBody)
+            
+            client.newCall(loginRequest).execute().use { response ->
+                // Kita tidak lagi mengecek response.code !in 200..399 karena 302 ada di dalamnya.
+                // OkHttp secara default akan mengikuti redirect (302).
+                // Kita langsung memvalidasi dari keberadaan cookie session.
+            }
+            
+            // Cek apakah cookie session sudah berhasil didapatkan
+            if (isLoggedIn()) {
+                loginSuccess = true
+                break // Keluar dari loop jika login berhasil
             }
         }
-        if (!isLoggedIn()) {
-            throw IOException("Login failed. Check your credentials.")
+
+        if (!loginSuccess) {
+            throw IOException("Login failed after $maxTries attempts. Check your credentials.")
         }
     }
 
