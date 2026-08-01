@@ -58,12 +58,24 @@ abstract class MirrorInKomik :
         .addInterceptor(::loginInterceptor)
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
+        
+        
+    // Menambahkan header default untuk semua request, termasuk load thumbnail Coil
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
+        .add("X-Requested-With", "XMLHttpRequest")
+        .add("Sec-Fetch-Site", "same-origin")
+        .add("Sec-Fetch-Mode", "cors")
+        .add("Sec-Fetch-Dest", "empty")
+        .add("Referer", "$baseUrl/")
+        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36") 
+
 
     // The reader page requires a logged-in session; the listchap endpoint requires
     // the full browser header set (User-Agent + Accept-Language + XHR + Sec-Fetch trio).
     private val readerHeaders: Headers = headersBuilder()
         .add("Accept", "*/*")
         .add("Accept-Language", "en-US,en;q=0.9")
+        .add("Referer", "$baseUrl/")
         .add("X-Requested-With", "XMLHttpRequest")
         .add("Sec-Fetch-Site", "same-origin")
         .add("Sec-Fetch-Mode", "cors")
