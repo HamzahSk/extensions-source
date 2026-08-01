@@ -86,10 +86,10 @@ abstract class MirrorInKomik :
         }
         return chain.proceed(request)
     }
-    
+
     private fun thumbnailInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        
+
         // Cek apakah request mengarah ke domain CDN gambar/thumbnail
         if (request.url.host == "cdngue.my.id") {
             val newRequest = request.newBuilder()
@@ -101,7 +101,7 @@ abstract class MirrorInKomik :
                 .build()
             return chain.proceed(newRequest)
         }
-        
+
         // Lanjutkan request normal untuk URL lainnya (seperti API atau HTML)
         return chain.proceed(request)
     }
@@ -353,7 +353,7 @@ abstract class MirrorInKomik :
             // Request ulang ke URL asli chapter dengan cookie yang sudah diperbarui
             val retryRequest = GET(response.request.url.toString(), headers)
             val retryResponse = client.newCall(retryRequest).execute()
-            
+
             document = retryResponse.use { it.asJsoup() }
             token = document.selectFirst("#thisch")?.attr("data-token")
                 ?: throw IOException("Could not find the reader token even after re-login. Check your credentials.")
@@ -379,6 +379,19 @@ abstract class MirrorInKomik :
 
     override fun imageUrlParse(response: Response): String = response.request.url.toString()
 
+    override fun imageRequest(page: Page): Request {
+        var imageUrl = page.imageUrl!!
+        val proxyUrl = preferences.getString(PREF_PROXY_URL, "")?.trim()
+        if (!proxyUrl.isNullOrEmpty()) {
+            imageUrl = if (proxyUrl.contains("%s")) {
+                proxyUrl.format(imageUrl)
+            } else {
+                "$proxyUrl$imageUrl"
+            }
+        }
+        return GET(imageUrl, headers)
+    }
+
     private class TypeFilter : Filter.Select<String>("Type", arrayOf("Manga", "Manhwa", "Manhua"), 0)
 
     private class GenreFilter(values: Array<String>) : Filter.Select<String>("Genre", arrayOf("All") + values, 0)
@@ -386,6 +399,7 @@ abstract class MirrorInKomik :
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         screen.addPreference(screen.editTextPreference(PREF_USERNAME, "MirrorInKomik username"))
         screen.addPreference(screen.editTextPreference(PREF_PASSWORD, "MirrorInKomik password", isPassword = true))
+        screen.addPreference(screen.editTextPreference(PREF_PROXY_URL, "Image Proxy URL"))
     }
 
     private fun PreferenceScreen.editTextPreference(key: String, summary: String, isPassword: Boolean = false): EditTextPreference = EditTextPreference(context).apply {
@@ -401,6 +415,7 @@ abstract class MirrorInKomik :
     companion object {
         private const val PREF_USERNAME = "username"
         private const val PREF_PASSWORD = "password"
+        private const val PREF_PROXY_URL = "pref_proxy_url"
         private const val SESSION_COOKIE = "ci_session"
 
         private val genreValues = arrayOf(
