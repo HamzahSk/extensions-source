@@ -1,144 +1,27 @@
-# Task: Create MirrorInkomik Mihon/Tachiyomi Extension
+# Task: Fix Login Interceptor for MirrorInkomik Extension
 
 ## Objective
+Fitur utama ekstensi (parsing, search, detail, manga) sudah berjalan dengan baik. Tugas ini HANYA berfokus pada perbaikan sistem login dan interceptor agar pembaruan *session/cookie* bisa terpicu dengan benar.
 
-Buat ekstensi Mihon/Tachiyomi untuk:
+## 🐛 Bug Description
+Saat ini, ekstensi gagal memicu fungsi `login()` ketika *session cookie* sudah kedaluwarsa. Ketika membuka chapter, server membalas dengan HTTP 302 (Redirect) ke halaman `/login`, tetapi interceptor tidak menangkap kondisi tersebut. Akibatnya, request berlanjut dengan status *unauthorized* dan chapter gagal dimuat.
 
-https://mirrorinkomik.my.id
+## 🛠️ Action Required
+Modifikasi `loginInterceptor` di dalam file `MirrorInKomik` dengan aturan berikut:
 
-Ikuti arsitektur repository yang sudah ada dan WAJIB mengikuti `STRUKTUR.md`.
+1. **Global 302 & Redirect Catcher:**
+   - Jalankan request awal ke server.
+   - Periksa respons dari server. Jika `response.code == 302`, `401`, `403`, ATAU URL dari respons dialihkan ke path yang mengandung `/login`, maka sesi dianggap basi/belum login.
+2. **Auto Re-login Mechanism (Jika terdeteksi belum login):**
+   - WAJIB tutup respons lama (`response.close()`) untuk mencegah *memory leak*.
+   - Panggil fungsi `login()` secara sinkron untuk mendapatkan *cookie session* yang baru.
+   - Ulangi request asli (`chain.proceed(request)`) menggunakan *session* yang baru didapat.
+3. **Pemicu Awal:**
+   - Jika pengguna mengeklik halaman chapter dan status `isLoggedIn()` bernilai `false`, langsung eksekusi `login()` sebelum melakukan request pertama untuk menghemat beban jaringan.
+4. **Prevent Infinite Loop:**
+   - Pastikan ada logika untuk mencegah *infinite loop* jika server terus-menerus melempar respons 302 meskipun fungsi `login()` sudah dijalankan.
 
-Jangan membuat implementasi berdasarkan asumsi. Seluruh implementasi harus berasal dari hasil analisis repository dan website.
-
----
-
-# Phase 1 — Repository Analysis
-
-Sebelum menulis kode:
-
-- Baca `STRUKTUR.md`.
-- Ikuti struktur project yang ada.
-- Cari minimal 3 ekstensi Indonesia yang paling mirip sebagai referensi.
-- Prioritaskan referensi dari `src/id/`, helper, util, parser, filter, interceptor, dan `ParsedHttpSource`.
-
-Jangan mengubah arsitektur project.
-
----
-
-# Phase 2 — Website Analysis
-
-Analisis seluruh website:
-
-https://mirrorinkomik.my.id
-
-Periksa:
-
-- Homepage
-- Latest
-- Popular
-- Search
-- Detail
-- Chapter
-- Reader
-- Genre/Tag
-- Pagination
-- HTML
-- Script
-- Network Request
-- Ajax/API/JSON Endpoint
-- Embedded Data
-
-Cari endpoint tersembunyi jika ada.
-
-Periksa juga:
-
-- fetch/XHR
-- REST/GraphQL
-- Cookie
-- Header
-- Cloudflare
-- CSRF/Token
-- Lazy Loading
-
-Jika tersedia endpoint yang lebih stabil daripada parsing HTML, gunakan endpoint tersebut.
-
----
-
-# Phase 3 — Metadata Mapping
-
-Pastikan seluruh metadata tersedia.
-
-Implementasikan:
-
-- Popular
-- Latest
-- Manga Detail
-- Chapter List
-- Reader
-
-Ambil seluruh metadata yang tersedia tanpa menghilangkannya.
-
-Urutkan chapter sesuai standar Mihon dan pastikan reader mengambil seluruh gambar dengan kualitas asli serta mendukung lazy image.
-
----
-
-# Phase 4 — Search & Filter
-
-Implementasikan:
-
-- Keyword Search
-- Genre Filter
-
-Jika website memiliki advanced search atau genre dinamis, gunakan mekanisme tersebut. Jangan membuat filter yang tidak tersedia.
-
----
-
-# Phase 5 — Reference Matching
-
-Bandingkan implementasi dengan ekstensi lain yang memiliki CMS, parser, endpoint, atau template serupa.
-
-Gunakan sebagai referensi tanpa melakukan copy-paste.
-
----
-
-# Phase 6 — Code Quality
-
-Ikuti coding style repository.
-
-Gunakan helper, utility, parser, network client, header, dan extension function yang sudah tersedia. Gunakan `ParsedHttpSource` bila memungkinkan dan hindari membuat helper baru jika sudah ada implementasinya.
-
----
-
-# Phase 7 — Validation
-
-Pastikan seluruh fitur berfungsi:
-
-- Popular
-- Latest
-- Search
-- Genre Filter
-- Detail
-- Chapter
-- Reader
-- Pagination
-- Metadata
-- Date Parsing
-- Image Request
-
-Pastikan tidak ada parsing error, duplicate, broken image, atau runtime error.
-
----
-
-# Phase 8 — Final Output
-
-Hasil akhir harus siap di-build tanpa modifikasi tambahan.
-
-Pastikan:
-
-- mengikuti `STRUKTUR.md`
-- konsisten dengan repository
-- menggunakan endpoint paling stabil
-- minim hardcode
-- mudah dipelihara
-
-Jika selama implementasi ditemukan endpoint yang lebih baik, refactor agar menggunakannya.
+## 🧪 Testing & Formatting
+Setelah kode dimodifikasi, jalankan perintah berikut:
+- **Format:** Lakukan `./gradlew spotlessApply` untuk memastikan kode sesuai dengan standar *formatting* repository (ktlint).
+- **Debug:** Lakukan pengetesan lokal. Pastikan membuka chapter yang dibatasi akan otomatis memicu log di konsol bahwa fungsi `login()` berjalan (saat respons 302 didapat), dan gambar chapter sukses dimuat tanpa *crash*.
