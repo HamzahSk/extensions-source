@@ -116,7 +116,7 @@ abstract class MirrorInKomik :
         }
 
         // Fetch the login page to obtain the CSRF token.
-        val loginPageRequest = GET("$baseUrl/login", headers)
+        val loginPageRequest = GET("$baseUrl/login")
         val loginPageResponse = client.newCall(loginPageRequest).execute()
         val document = loginPageResponse.use { it.asJsoup() }
         val csrf = document.selectFirst("input[name=csrf_test_name]")?.attr("value")
