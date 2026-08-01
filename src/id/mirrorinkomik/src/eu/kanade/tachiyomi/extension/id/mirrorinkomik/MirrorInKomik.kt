@@ -74,18 +74,6 @@ abstract class MirrorInKomik :
     private val xhrHeaders: Headers = headersBuilder()
         .add("X-Requested-With", "XMLHttpRequest")
         .build()
-
-    private fun loginInterceptor(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        // Only chapter reader pages require authentication.
-        if (!request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
-            return chain.proceed(request)
-        }
-        if (!isLoggedIn()) {
-            login()
-        }
-        return chain.proceed(request)
-    }
     
     private fun thumbnailInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -103,6 +91,18 @@ abstract class MirrorInKomik :
         }
         
         // Lanjutkan request normal untuk URL lainnya (seperti API atau HTML)
+        return chain.proceed(request)
+    }
+
+    private fun loginInterceptor(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        // Only chapter reader pages require authentication.
+        if (request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
+            return chain.proceed(request)
+        }
+        if (!isLoggedIn()) {
+            login()
+        }
         return chain.proceed(request)
     }
 
@@ -343,9 +343,22 @@ abstract class MirrorInKomik :
     override fun pageListRequest(chapter: SChapter): Request = GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        val document = response.asJsoup()
-        val token = document.selectFirst("#thisch")?.attr("data-token")
-            ?: throw IOException("Could not find the reader token. Make sure you are logged in.")
+        var document = response.asJsoup()
+        var token = document.selectFirst("#thisch")?.attr("data-token")
+
+        // Jika token tidak ditemukan, coba paksa login ulang dan request ulang halaman chapter-nya
+        if (token == null) {
+            login() // Memperbarui session/cookie di OkHttpClient
+
+            // Request ulang ke URL asli chapter dengan cookie yang sudah diperbarui
+            val retryRequest = GET(response.request.url.toString(), headers)
+            val retryResponse = client.newCall(retryRequest).execute()
+            
+            document = retryResponse.use { it.asJsoup() }
+            token = document.selectFirst("#thisch")?.attr("data-token")
+                ?: throw IOException("Could not find the reader token even after re-login. Check your credentials.")
+        }
+
         val listChapRequest = GET("$baseUrl/chapter/listchap,$token", readerHeaders)
         return client.newCall(listChapRequest).execute().use { listResponse ->
             if (!listResponse.isSuccessful) {
