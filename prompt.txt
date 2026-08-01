@@ -2,287 +2,143 @@
 
 ## Objective
 
-Buat ekstensi Mihon/Tachiyomi baru untuk website berikut:
+Buat ekstensi Mihon/Tachiyomi untuk:
 
-> https://mirrorinkomik.my.id
+https://mirrorinkomik.my.id
 
-Ekstensi harus mengikuti arsitektur repository yang sudah ada dan WAJIB mengikuti dokumentasi yang ada di `STRUKTUR.md`.
+Ikuti arsitektur repository yang sudah ada dan WAJIB mengikuti `STRUKTUR.md`.
 
-Jangan membuat implementasi berdasarkan asumsi. Seluruh implementasi harus berasal dari hasil analisis struktur repository dan hasil scraping website.
+Jangan membuat implementasi berdasarkan asumsi. Seluruh implementasi harus berasal dari hasil analisis repository dan website.
 
 ---
 
 # Phase 1 — Repository Analysis
 
-Sebelum menulis kode, lakukan analisis repository terlebih dahulu.
+Sebelum menulis kode:
 
-## Wajib dilakukan
-
-- Baca file `STRUKTUR.md`
-- Ikuti seluruh struktur project yang dijelaskan di dalamnya.
-- Cari minimal 3 ekstensi Indonesia yang memiliki struktur mirip.
-- Gunakan implementasi mereka sebagai referensi.
-
-Prioritaskan referensi dari:
-
-- `src/id/`
-- helper
-- util
-- parser
-- filter
-- interceptor
-- extension yang memakai ParsedHttpSource
+- Baca `STRUKTUR.md`.
+- Ikuti struktur project yang ada.
+- Cari minimal 3 ekstensi Indonesia yang paling mirip sebagai referensi.
+- Prioritaskan referensi dari `src/id/`, helper, util, parser, filter, interceptor, dan `ParsedHttpSource`.
 
 Jangan mengubah arsitektur project.
 
 ---
 
-# Phase 2 — Website Scraping
+# Phase 2 — Website Analysis
 
-Lakukan scraping menyeluruh terhadap website berikut:
+Analisis seluruh website:
 
 https://mirrorinkomik.my.id
 
-Analisis:
-
-- Homepage
-- Latest Update
-- Popular
-- Search
-- Detail Manga
-- Chapter List
-- Reader
-- Genre
-- Tag
-- Pagination
-- Ajax Request
-- API Endpoint
-- JSON Endpoint
-- Embedded Data
-- Script
-- Network Request
-- HTML Structure
-
-Cari endpoint tersembunyi apabila ada.
-
 Periksa:
 
-- fetch()
-- XHR
-- JSON
-- GraphQL
-- REST API
-- WordPress Ajax
-- Cookie
-- Header khusus
-- Cloudflare
-- CSRF
-- Token
-- Lazy Loading
-
-Apabila ada endpoint yang lebih stabil dibanding scraping HTML, gunakan endpoint tersebut.
-
----
-
-# Phase 3 — Metadata Mapping
-
-Pastikan seluruh metadata berhasil diambil.
-
-## Popular Manga
-
-Harus mengambil:
-
-- Title
-- Thumbnail
-- URL
-
----
-
-## Latest Updates
-
-Harus mengambil:
-
-- Title
-- Thumbnail
-- URL
-- Chapter terbaru
-- Update terbaru (jika tersedia)
-
----
-
-## Manga Detail
-
-Ambil seluruh metadata:
-
-- Title
-- Alternative Title
-- Author
-- Artist
-- Status
-- Genre
-- Description
-- Thumbnail
-- Type
-- Rating
-- Tags
-- Release Year
-- Serialization
-- Semua metadata lain yang tersedia
-
-Jangan menghilangkan metadata apa pun.
-
----
-
-## Chapter List
-
-Ambil:
-
-- Chapter Number
-- Chapter Name
-- Upload Date
-- URL
-
-Urutkan chapter sesuai standar Mihon.
-
----
-
-## Reader
-
-Ambil seluruh halaman gambar.
-
-Pastikan:
-
-- kualitas asli
-- tidak ada gambar yang hilang
-- tidak ada duplicate
-- support lazy image
-
----
-
-# Phase 4 — Search
-
-Implementasikan search.
-
-Search harus mendukung:
-
-- keyword
-
-Jika website memiliki advanced search, implementasikan seluruh filter yang tersedia.
-
----
-
-# Phase 5 — Filter
-
-Gunakan **Genre sebagai Filter**.
-
-Jangan membuat filter lain apabila tidak benar-benar tersedia.
-
-Filter genre harus diambil secara dinamis dari website apabila memungkinkan.
-
-Jika website hanya menyediakan daftar tag/genre pada halaman tertentu, gunakan daftar tersebut.
-
-Implementasikan menggunakan mekanisme filter standar Mihon.
-
----
-
-# Phase 6 — Endpoint Discovery
-
-Cari seluruh endpoint yang digunakan website.
-
-Contoh:
-
+- Homepage
 - Latest
 - Popular
 - Search
 - Detail
 - Chapter
 - Reader
-- Genre
+- Genre/Tag
+- Pagination
+- HTML
+- Script
+- Network Request
+- Ajax/API/JSON Endpoint
+- Embedded Data
 
-Jika terdapat endpoint JSON yang lebih cepat daripada HTML parser, gunakan endpoint tersebut.
+Cari endpoint tersembunyi jika ada.
 
-Prioritaskan endpoint resmi dibanding parsing HTML.
+Periksa juga:
 
----
+- fetch/XHR
+- REST/GraphQL
+- Cookie
+- Header
+- Cloudflare
+- CSRF/Token
+- Lazy Loading
 
-# Phase 7 — Reference Matching
-
-Bandingkan implementasi dengan ekstensi lain pada repository.
-
-Cari implementasi yang mempunyai:
-
-- struktur parser serupa
-- CMS yang sama
-- endpoint yang sama
-- template website yang sama
-
-Gunakan sebagai referensi.
-
-Jangan melakukan copy-paste secara membabi buta.
-
----
-
-# Phase 8 — Code Quality
-
-Kode harus mengikuti style repository.
-
-Gunakan:
-
-- ParsedHttpSource bila memungkinkan.
-- Helper yang sudah tersedia.
-- Utility bawaan repository.
-- Network client bawaan.
-- Header bawaan project.
-- Extension function yang sudah tersedia.
-
-Jangan membuat helper baru jika repository sudah memiliki implementasi yang sama.
+Jika tersedia endpoint yang lebih stabil daripada parsing HTML, gunakan endpoint tersebut.
 
 ---
 
-# Phase 9 — Validation
+# Phase 3 — Metadata Mapping
 
-Pastikan seluruh fitur bekerja.
+Pastikan seluruh metadata tersedia.
 
-Checklist:
+Implementasikan:
 
-- Popular ✔
-- Latest ✔
-- Search ✔
-- Genre Filter ✔
-- Detail ✔
-- Chapter ✔
-- Reader ✔
-- Pagination ✔
-- Metadata ✔
-- Date Parse ✔
-- Image Request ✔
+- Popular
+- Latest
+- Manga Detail
+- Chapter List
+- Reader
 
-Pastikan tidak ada:
+Ambil seluruh metadata yang tersedia tanpa menghilangkannya.
 
-- NullPointerException
-- Parsing Error
-- Empty List
-- Broken Image
-- Duplicate Chapter
-- Duplicate Image
+Urutkan chapter sesuai standar Mihon dan pastikan reader mengambil seluruh gambar dengan kualitas asli serta mendukung lazy image.
 
 ---
 
-# Phase 10 — Final Output
+# Phase 4 — Search & Filter
 
-Hasil akhir harus berupa ekstensi yang siap di-build tanpa modifikasi tambahan.
+Implementasikan:
+
+- Keyword Search
+- Genre Filter
+
+Jika website memiliki advanced search atau genre dinamis, gunakan mekanisme tersebut. Jangan membuat filter yang tidak tersedia.
+
+---
+
+# Phase 5 — Reference Matching
+
+Bandingkan implementasi dengan ekstensi lain yang memiliki CMS, parser, endpoint, atau template serupa.
+
+Gunakan sebagai referensi tanpa melakukan copy-paste.
+
+---
+
+# Phase 6 — Code Quality
+
+Ikuti coding style repository.
+
+Gunakan helper, utility, parser, network client, header, dan extension function yang sudah tersedia. Gunakan `ParsedHttpSource` bila memungkinkan dan hindari membuat helper baru jika sudah ada implementasinya.
+
+---
+
+# Phase 7 — Validation
+
+Pastikan seluruh fitur berfungsi:
+
+- Popular
+- Latest
+- Search
+- Genre Filter
+- Detail
+- Chapter
+- Reader
+- Pagination
+- Metadata
+- Date Parsing
+- Image Request
+
+Pastikan tidak ada parsing error, duplicate, broken image, atau runtime error.
+
+---
+
+# Phase 8 — Final Output
+
+Hasil akhir harus siap di-build tanpa modifikasi tambahan.
 
 Pastikan:
 
-- mengikuti seluruh struktur `STRUKTUR.md`
-- mengikuti coding style repository
-- tidak menggunakan hardcode yang tidak perlu
+- mengikuti `STRUKTUR.md`
+- konsisten dengan repository
 - menggunakan endpoint paling stabil
+- minim hardcode
 - mudah dipelihara
-- konsisten dengan ekstensi lain dalam repository
 
-Jangan berhenti sebelum seluruh fitur selesai diimplementasikan.
-
-Jika menemukan endpoint yang lebih baik di tengah proses, refactor implementasi agar menggunakan endpoint tersebut.
-
-Prioritaskan stabilitas, performa, dan maintainability dibanding implementasi yang hanya sekadar berfungsi.
+Jika selama implementasi ditemukan endpoint yang lebih baik, refactor agar menggunakannya.
