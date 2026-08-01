@@ -88,8 +88,14 @@ abstract class MirrorInKomik :
         val request = chain.request()
         val path = request.url.encodedPath
 
+        // MENCEGAH INFINITE LOOP:
+        // Jika request aslinya memang sengaja ke halaman /login (dipanggil dari fungsi login()),
+        // biarkan lewat saja, jangan di-intercept.
+        if (path.startsWith("/login")) {
+            return chain.proceed(request)
+        }
+
         // (Opsional) Pengecekan awal khusus untuk halaman chapter utama
-        // Biar hemat 1 request ke server kalau dari awal kita udah tau belum login
         if (path.startsWith("/chapter/") && !path.contains("listchap") && !isLoggedIn()) {
             login()
         }
@@ -98,24 +104,15 @@ abstract class MirrorInKomik :
         var response = chain.proceed(request)
 
         // 2. Tangkap kondisi khusus:
-        // - Apakah HTTP code-nya 302 / 401 / 403?
-        // - ATAU apakah OkHttp secara otomatis sudah mengikuti redirect 302 itu ke "/login"?
         val isCodeUnauthorized = response.code == 302 || response.code == 401 || response.code == 403
+        // Cukup cek apakah response dilempar ke login (padahal request aslinya bukan ke login)
         val isRedirectedToLogin = response.request.url.encodedPath.startsWith("/login")
         val alreadyRetried = request.header(RETRY_HEADER) != null
 
-        // Pokoknya kalo belum pernah retry dan dapat 302/401/403 atau terlempar ke login,
-        // langsung eksekusi! Kalau udah pernah retry, biarkan response apa adanya biar
-        // nggak terjadi infinite loop.
         if (!alreadyRetried && (isCodeUnauthorized || isRedirectedToLogin)) {
-            // Wajib tutup (close) body dari response lama biar nggak memory leak
             response.close()
-
-            // Paksa login untuk mendapatkan session/cookie baru
             login()
 
-            // Ulangi request aslinya (kali ini cookie baru akan otomatis menempel),
-            // kasih tanda header supaya kalau server masih melempar 302 kita nggak retry lagi.
             val retryRequest = request.newBuilder()
                 .header(RETRY_HEADER, "true")
                 .build()
