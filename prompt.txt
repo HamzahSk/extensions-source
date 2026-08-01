@@ -1,39 +1,288 @@
-# Task: Analyze & Document Repository Architecture to `STRUKTUR.md`
+# Task: Create MirrorInkomik Mihon/Tachiyomi Extension
 
-## Overview
-Lakukan analisis menyeluruh terhadap repositori ekstensi ini (Mihon/Tachiyomi Extension) dan rangkum semua informasi teknis penting ke dalam satu file dokumentasi bernama **`STRUKTUR.md`** di root directory.
+## Objective
 
----
+Buat ekstensi Mihon/Tachiyomi baru untuk website berikut:
 
-## Technical Requirements for `STRUKTUR.md`
+> https://mirrorinkomik.my.id
 
-File `STRUKTUR.md` yang dihasilkan HARUS memuat bagian-bagian berikut dengan jelas dan terstruktur:
+Ekstensi harus mengikuti arsitektur repository yang sudah ada dan WAJIB mengikuti dokumentasi yang ada di `STRUKTUR.md`.
 
-### 1. Struktur Folder & Proyek (`Project Structure`)
-* Gambarkan pohon direktori (directory tree) utama repositori ini (misalnya: `src/`, `lib/`, `gradle/`, `.github/`, dll.).
-* Jelaskan struktur penamaan dan lokasi *source code* ekstensi per bahasa/region (khususnya fokus pada pola direktori seperti `src/id/<extension-name>`).
-* Jelaskan fungsi dari folder-folder penting dan file konfigurasinya.
-
-### 2. Arsitektur & Anatomi Ekstensi (`Extension Anatomy`)
-* Jelaskan komponen utama dalam pembuatan satu ekstensi (class utama yang meng-extend `HttpSource` atau `ParsedHttpSource`, factory class jika ada multi-source, dsb.).
-* Rangkum metode-metode utama yang wajib diimplementasikan/overridden oleh ekstensi (contoh: `popularMangaRequest`, `latestUpdatesParse`, `mangaDetailsParse`, `chapterListParse`, `pageListParse`, `imageRequest`).
-* Jelaskan mekanisme HTTP Client & Network Interceptor (OkHttp, `CookieJar`, headers handling) yang umum digunakan di project ini.
-
-### 3. Sistem Build & Gradle (`Build System & Commands`)
-* Jelaskan cara kerja sistem *build* di project ini (Gradle Multi-Project/Module setup).
-* Rangkum perintah-perintah penting yang sering digunakan untuk pengembangan, antara lain:
-  * Cara build ekstensi tertentu atau seluruh ekstensi (`./gradlew assembleDebug`, dll.).
-  * Cara menjalankan linter dan formatting kode (`./gradlew spotlessApply`, `./gradlew spotlessCheck`).
-  * Cara menjalankan automated testing (`./gradlew testDebugUnitTest`).
-
-### 4. Plugin, Dependensi & Tooling (`Plugins & Dependencies`)
-* Identifikasi dan rangkum plugin Gradle utama yang dipakai dalam proyek ini (misalnya Android Gradle Plugin, Kotlin, Spotless, atau plugin kustom khusus Mihon/Tachiyomi).
-* Rangkum dependensi utama (seperti Jsoup, OkHttp, kotlinx-serialization, dsb.) beserta fungsinya.
-* Jelaskan konfigurasi CI/CD atau workflow (seperti GitHub Actions) jika relevan untuk proses pengecekan atau build otomatis.
+Jangan membuat implementasi berdasarkan asumsi. Seluruh implementasi harus berasal dari hasil analisis struktur repository dan hasil scraping website.
 
 ---
 
-## Execution Instructions
-1. Analisis file `build.gradle.kts` (atau `.gradle`), `settings.gradle.kts`, `gradle.properties`, dan beberapa contoh *source* ekstensi (terutama di `src/id/`) untuk mengambil data yang akurat.
-2. Tulis output akhir HANYA ke dalam file baru bernama **`STRUKTUR.md`** di root directory dengan format Markdown yang rapi (menggunakan heading, tabel, bullet point, dan block kode jika diperlukan).
-3. Pastikan isi dokumentasi ringkas, jelas, dan dapat menjadi panduan cepat (cheat sheet) bagi developer yang baru berkontribusi di repositori ini.
+# Phase 1 — Repository Analysis
+
+Sebelum menulis kode, lakukan analisis repository terlebih dahulu.
+
+## Wajib dilakukan
+
+- Baca file `STRUKTUR.md`
+- Ikuti seluruh struktur project yang dijelaskan di dalamnya.
+- Cari minimal 3 ekstensi Indonesia yang memiliki struktur mirip.
+- Gunakan implementasi mereka sebagai referensi.
+
+Prioritaskan referensi dari:
+
+- `src/id/`
+- helper
+- util
+- parser
+- filter
+- interceptor
+- extension yang memakai ParsedHttpSource
+
+Jangan mengubah arsitektur project.
+
+---
+
+# Phase 2 — Website Scraping
+
+Lakukan scraping menyeluruh terhadap website berikut:
+
+https://mirrorinkomik.my.id
+
+Analisis:
+
+- Homepage
+- Latest Update
+- Popular
+- Search
+- Detail Manga
+- Chapter List
+- Reader
+- Genre
+- Tag
+- Pagination
+- Ajax Request
+- API Endpoint
+- JSON Endpoint
+- Embedded Data
+- Script
+- Network Request
+- HTML Structure
+
+Cari endpoint tersembunyi apabila ada.
+
+Periksa:
+
+- fetch()
+- XHR
+- JSON
+- GraphQL
+- REST API
+- WordPress Ajax
+- Cookie
+- Header khusus
+- Cloudflare
+- CSRF
+- Token
+- Lazy Loading
+
+Apabila ada endpoint yang lebih stabil dibanding scraping HTML, gunakan endpoint tersebut.
+
+---
+
+# Phase 3 — Metadata Mapping
+
+Pastikan seluruh metadata berhasil diambil.
+
+## Popular Manga
+
+Harus mengambil:
+
+- Title
+- Thumbnail
+- URL
+
+---
+
+## Latest Updates
+
+Harus mengambil:
+
+- Title
+- Thumbnail
+- URL
+- Chapter terbaru
+- Update terbaru (jika tersedia)
+
+---
+
+## Manga Detail
+
+Ambil seluruh metadata:
+
+- Title
+- Alternative Title
+- Author
+- Artist
+- Status
+- Genre
+- Description
+- Thumbnail
+- Type
+- Rating
+- Tags
+- Release Year
+- Serialization
+- Semua metadata lain yang tersedia
+
+Jangan menghilangkan metadata apa pun.
+
+---
+
+## Chapter List
+
+Ambil:
+
+- Chapter Number
+- Chapter Name
+- Upload Date
+- URL
+
+Urutkan chapter sesuai standar Mihon.
+
+---
+
+## Reader
+
+Ambil seluruh halaman gambar.
+
+Pastikan:
+
+- kualitas asli
+- tidak ada gambar yang hilang
+- tidak ada duplicate
+- support lazy image
+
+---
+
+# Phase 4 — Search
+
+Implementasikan search.
+
+Search harus mendukung:
+
+- keyword
+
+Jika website memiliki advanced search, implementasikan seluruh filter yang tersedia.
+
+---
+
+# Phase 5 — Filter
+
+Gunakan **Genre sebagai Filter**.
+
+Jangan membuat filter lain apabila tidak benar-benar tersedia.
+
+Filter genre harus diambil secara dinamis dari website apabila memungkinkan.
+
+Jika website hanya menyediakan daftar tag/genre pada halaman tertentu, gunakan daftar tersebut.
+
+Implementasikan menggunakan mekanisme filter standar Mihon.
+
+---
+
+# Phase 6 — Endpoint Discovery
+
+Cari seluruh endpoint yang digunakan website.
+
+Contoh:
+
+- Latest
+- Popular
+- Search
+- Detail
+- Chapter
+- Reader
+- Genre
+
+Jika terdapat endpoint JSON yang lebih cepat daripada HTML parser, gunakan endpoint tersebut.
+
+Prioritaskan endpoint resmi dibanding parsing HTML.
+
+---
+
+# Phase 7 — Reference Matching
+
+Bandingkan implementasi dengan ekstensi lain pada repository.
+
+Cari implementasi yang mempunyai:
+
+- struktur parser serupa
+- CMS yang sama
+- endpoint yang sama
+- template website yang sama
+
+Gunakan sebagai referensi.
+
+Jangan melakukan copy-paste secara membabi buta.
+
+---
+
+# Phase 8 — Code Quality
+
+Kode harus mengikuti style repository.
+
+Gunakan:
+
+- ParsedHttpSource bila memungkinkan.
+- Helper yang sudah tersedia.
+- Utility bawaan repository.
+- Network client bawaan.
+- Header bawaan project.
+- Extension function yang sudah tersedia.
+
+Jangan membuat helper baru jika repository sudah memiliki implementasi yang sama.
+
+---
+
+# Phase 9 — Validation
+
+Pastikan seluruh fitur bekerja.
+
+Checklist:
+
+- Popular ✔
+- Latest ✔
+- Search ✔
+- Genre Filter ✔
+- Detail ✔
+- Chapter ✔
+- Reader ✔
+- Pagination ✔
+- Metadata ✔
+- Date Parse ✔
+- Image Request ✔
+
+Pastikan tidak ada:
+
+- NullPointerException
+- Parsing Error
+- Empty List
+- Broken Image
+- Duplicate Chapter
+- Duplicate Image
+
+---
+
+# Phase 10 — Final Output
+
+Hasil akhir harus berupa ekstensi yang siap di-build tanpa modifikasi tambahan.
+
+Pastikan:
+
+- mengikuti seluruh struktur `STRUKTUR.md`
+- mengikuti coding style repository
+- tidak menggunakan hardcode yang tidak perlu
+- menggunakan endpoint paling stabil
+- mudah dipelihara
+- konsisten dengan ekstensi lain dalam repository
+
+Jangan berhenti sebelum seluruh fitur selesai diimplementasikan.
+
+Jika menemukan endpoint yang lebih baik di tengah proses, refactor implementasi agar menggunakan endpoint tersebut.
+
+Prioritaskan stabilitas, performa, dan maintainability dibanding implementasi yang hanya sekadar berfungsi.
