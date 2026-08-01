@@ -74,6 +74,18 @@ abstract class MirrorInKomik :
     private val xhrHeaders: Headers = headersBuilder()
         .add("X-Requested-With", "XMLHttpRequest")
         .build()
+
+    private fun loginInterceptor(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        // Only chapter reader pages require authentication.
+        if (!request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
+            return chain.proceed(request)
+        }
+        if (!isLoggedIn()) {
+            login()
+        }
+        return chain.proceed(request)
+    }
     
     private fun thumbnailInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -91,18 +103,6 @@ abstract class MirrorInKomik :
         }
         
         // Lanjutkan request normal untuk URL lainnya (seperti API atau HTML)
-        return chain.proceed(request)
-    }
-
-    private fun loginInterceptor(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        // Only chapter reader pages require authentication.
-        if (request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
-            return chain.proceed(request)
-        }
-        if (!isLoggedIn()) {
-            login()
-        }
         return chain.proceed(request)
     }
 
