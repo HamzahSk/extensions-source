@@ -58,7 +58,8 @@ abstract class MirrorInKomik :
         .addInterceptor(::loginInterceptor)
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
-
+        
+        
     // Menambahkan header default untuk semua request, termasuk load thumbnail Coil
     override fun headersBuilder(): Headers.Builder = super.headersBuilder()
         .add("X-Requested-With", "XMLHttpRequest")
@@ -66,7 +67,8 @@ abstract class MirrorInKomik :
         .add("Sec-Fetch-Mode", "cors")
         .add("Sec-Fetch-Dest", "empty")
         .add("Referer", "$baseUrl/")
-        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
+        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36") 
+
 
     // The reader page requires a logged-in session; the listchap endpoint requires
     // the full browser header set (User-Agent + Accept-Language + XHR + Sec-Fetch trio).
@@ -86,40 +88,14 @@ abstract class MirrorInKomik :
 
     private fun loginInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        val path = request.url.encodedPath
-
-        // MENCEGAH INFINITE LOOP:
-        // Jika request aslinya memang sengaja ke halaman /login (dipanggil dari fungsi login()),
-        // biarkan lewat saja, jangan di-intercept.
-        if (path.startsWith("/login")) {
+        // Only chapter reader pages require authentication.
+        if (request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
             return chain.proceed(request)
         }
-
-        // (Opsional) Pengecekan awal khusus untuk halaman chapter utama
-        if (path.startsWith("/chapter/") && !path.contains("listchap") && !isLoggedIn()) {
+        if (!isLoggedIn()) {
             login()
         }
-
-        // 1. Jalankan request ke server
-        var response = chain.proceed(request)
-
-        // 2. Tangkap kondisi khusus:
-        val isCodeUnauthorized = response.code == 302 || response.code == 401 || response.code == 403
-        // Cukup cek apakah response dilempar ke login (padahal request aslinya bukan ke login)
-        val isRedirectedToLogin = response.request.url.encodedPath.startsWith("/login")
-        val alreadyRetried = request.header(RETRY_HEADER) != null
-
-        if (!alreadyRetried && (isCodeUnauthorized || isRedirectedToLogin)) {
-            response.close()
-            login()
-
-            val retryRequest = request.newBuilder()
-                .header(RETRY_HEADER, "true")
-                .build()
-            response = chain.proceed(retryRequest)
-        }
-
-        return response
+        return chain.proceed(request)
     }
 
     private fun isLoggedIn(): Boolean = client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
@@ -418,7 +394,6 @@ abstract class MirrorInKomik :
         private const val PREF_USERNAME = "username"
         private const val PREF_PASSWORD = "password"
         private const val SESSION_COOKIE = "ci_session"
-        private const val RETRY_HEADER = "X-Auth-Retry"
 
         private val genreValues = arrayOf(
             "Action",
@@ -443,7 +418,6 @@ abstract class MirrorInKomik :
             "Slice of Life",
             "Supernatural",
             "Webtoons",
-            "Yaoi",
         )
     }
 }
