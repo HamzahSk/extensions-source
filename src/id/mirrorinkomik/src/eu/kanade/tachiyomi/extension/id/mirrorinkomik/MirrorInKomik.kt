@@ -56,26 +56,15 @@ abstract class MirrorInKomik :
 
     override val client: OkHttpClient = network.client.newBuilder()
         .addInterceptor(::loginInterceptor)
+        .addInterceptor(::thumbnailInterceptor)
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
-        
-        
-    // Menambahkan header default untuk semua request, termasuk load thumbnail Coil
-    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
-        .add("X-Requested-With", "XMLHttpRequest")
-        .add("Sec-Fetch-Site", "same-origin")
-        .add("Sec-Fetch-Mode", "cors")
-        .add("Sec-Fetch-Dest", "empty")
-        .add("Referer", "$baseUrl/")
-        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36") 
-
 
     // The reader page requires a logged-in session; the listchap endpoint requires
     // the full browser header set (User-Agent + Accept-Language + XHR + Sec-Fetch trio).
     private val readerHeaders: Headers = headersBuilder()
         .add("Accept", "*/*")
         .add("Accept-Language", "en-US,en;q=0.9")
-        .add("Referer", "$baseUrl/")
         .add("X-Requested-With", "XMLHttpRequest")
         .add("Sec-Fetch-Site", "same-origin")
         .add("Sec-Fetch-Mode", "cors")
@@ -89,12 +78,31 @@ abstract class MirrorInKomik :
     private fun loginInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
         // Only chapter reader pages require authentication.
-        if (request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
+        if (!request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
             return chain.proceed(request)
         }
         if (!isLoggedIn()) {
             login()
         }
+        return chain.proceed(request)
+    }
+    
+    private fun thumbnailInterceptor(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        
+        // Cek apakah request mengarah ke domain CDN gambar/thumbnail
+        if (request.url.host == "cdngue.my.id") {
+            val newRequest = request.newBuilder()
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("Sec-Fetch-Site", "same-origin")
+                .header("Sec-Fetch-Mode", "cors")
+                .header("Sec-Fetch-Dest", "empty")
+                .header("Referer", "$baseUrl/")
+                .build()
+            return chain.proceed(newRequest)
+        }
+        
+        // Lanjutkan request normal untuk URL lainnya (seperti API atau HTML)
         return chain.proceed(request)
     }
 
@@ -119,28 +127,14 @@ abstract class MirrorInKomik :
             .addEncoded("login", username)
             .addEncoded("password", password)
             .build()
-            
-        var loginSuccess = false
-        val maxTries = 2
-
-        for (attempt in 1..maxTries) {
-            val loginRequest = POST("$baseUrl/login", headersBuilder().build(), formBody)
-            
-            client.newCall(loginRequest).execute().use { response ->
-                // Kita tidak lagi mengecek response.code !in 200..399 karena 302 ada di dalamnya.
-                // OkHttp secara default akan mengikuti redirect (302).
-                // Kita langsung memvalidasi dari keberadaan cookie session.
-            }
-            
-            // Cek apakah cookie session sudah berhasil didapatkan
-            if (isLoggedIn()) {
-                loginSuccess = true
-                break // Keluar dari loop jika login berhasil
+        val loginRequest = POST("$baseUrl/login", headersBuilder().build(), formBody)
+        client.newCall(loginRequest).execute().use { response ->
+            if (response.code !in 200..399) {
+                throw IOException("Login failed (HTTP ${response.code}). Check your credentials.")
             }
         }
-
-        if (!loginSuccess) {
-            throw IOException("Login failed after $maxTries attempts. Check your credentials.")
+        if (!isLoggedIn()) {
+            throw IOException("Login failed. Check your credentials.")
         }
     }
 
@@ -349,22 +343,9 @@ abstract class MirrorInKomik :
     override fun pageListRequest(chapter: SChapter): Request = GET("$baseUrl${chapter.url}", headers)
 
     override fun pageListParse(response: Response): List<Page> {
-        var document = response.asJsoup()
-        var token = document.selectFirst("#thisch")?.attr("data-token")
-
-        // Jika token tidak ditemukan, coba paksa login ulang dan request ulang halaman chapter-nya
-        if (token == null) {
-            login() // Memperbarui session/cookie di OkHttpClient
-
-            // Request ulang ke URL asli chapter dengan cookie yang sudah diperbarui
-            val retryRequest = GET(response.request.url.toString(), headers)
-            val retryResponse = client.newCall(retryRequest).execute()
-            
-            document = retryResponse.use { it.asJsoup() }
-            token = document.selectFirst("#thisch")?.attr("data-token")
-                ?: throw IOException("Could not find the reader token even after re-login. Check your credentials.")
-        }
-
+        val document = response.asJsoup()
+        val token = document.selectFirst("#thisch")?.attr("data-token")
+            ?: throw IOException("Could not find the reader token. Make sure you are logged in.")
         val listChapRequest = GET("$baseUrl/chapter/listchap,$token", readerHeaders)
         return client.newCall(listChapRequest).execute().use { listResponse ->
             if (!listResponse.isSuccessful) {
