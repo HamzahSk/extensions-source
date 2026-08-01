@@ -337,7 +337,7 @@ abstract class MirrorInKomik :
             "tahun" -> 60L * 60 * 24 * 365
             else -> return 0L
         }
-        return System.currentTimeMillis() / 1000 - amount * unitSeconds
+        return System.currentTimeMillis() - amount * unitSeconds * 1000
     }
 
     override fun pageListRequest(chapter: SChapter): Request = GET("$baseUrl${chapter.url}", headers)

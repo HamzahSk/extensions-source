@@ -1,27 +1,20 @@
-# Task: Fix Login Interceptor for MirrorInkomik Extension
+# Task: Add Optional Image Proxy Support to MirrorInKomik
 
 ## Objective
-Fitur utama ekstensi (parsing, search, detail, manga) sudah berjalan dengan baik. Tugas ini HANYA berfokus pada perbaikan sistem login dan interceptor agar pembaruan *session/cookie* bisa terpicu dengan benar.
+Tambahkan dukungan **Image Proxy** pada ekstensi `src/id/mirrorinkomik` dengan mengikuti implementasi yang sudah ada di `src/id/cgbum`.
 
-## 🐛 Bug Description
-Saat ini, ekstensi gagal memicu fungsi `login()` ketika *session cookie* sudah kedaluwarsa. Ketika membuka chapter, server membalas dengan HTTP 302 (Redirect) ke halaman `/login`, tetapi interceptor tidak menangkap kondisi tersebut. Akibatnya, request berlanjut dengan status *unauthorized* dan chapter gagal dimuat.
+## Requirements
 
-## 🛠️ Action Required
-Modifikasi `loginInterceptor` di dalam file `MirrorInKomik` dengan aturan berikut:
+- Implementasikan dukungan Image Proxy pada `src/id/mirrorinkomik`.
+- Gunakan `src/id/cgbum` sebagai referensi implementasi.
+- Image Proxy **bersifat opsional** dan hanya digunakan jika pengguna telah mengisi/mengaktifkan nilai Image Proxy di pengaturan.
+- Jika Image Proxy tidak disetel, gambar harus tetap dimuat menggunakan URL asli seperti sebelumnya.
+- Jangan mengubah fitur lain yang sudah berjalan.
 
-1. **Global 302 & Redirect Catcher:**
-   - Jalankan request awal ke server.
-   - Periksa respons dari server. Jika `response.code == 302`, `401`, `403`, ATAU URL dari respons dialihkan ke path yang mengandung `/login`, maka sesi dianggap basi/belum login.
-2. **Auto Re-login Mechanism (Jika terdeteksi belum login):**
-   - WAJIB tutup respons lama (`response.close()`) untuk mencegah *memory leak*.
-   - Panggil fungsi `login()` secara sinkron untuk mendapatkan *cookie session* yang baru.
-   - Ulangi request asli (`chain.proceed(request)`) menggunakan *session* yang baru didapat.
-3. **Pemicu Awal:**
-   - Jika pengguna mengeklik halaman chapter dan status `isLoggedIn()` bernilai `false`, langsung eksekusi `login()` sebelum melakukan request pertama untuk menghemat beban jaringan.
-4. **Prevent Infinite Loop:**
-   - Pastikan ada logika untuk mencegah *infinite loop* jika server terus-menerus melempar respons 302 meskipun fungsi `login()` sudah dijalankan.
+## Testing
 
-## 🧪 Testing & Formatting
-Setelah kode dimodifikasi, jalankan perintah berikut:
-- **Format:** Lakukan `./gradlew spotlessApply` untuk memastikan kode sesuai dengan standar *formatting* repository (ktlint).
-- **Debug:** Lakukan pengetesan lokal. Pastikan membuka chapter yang dibatasi akan otomatis memicu log di konsol bahwa fungsi `login()` berjalan (saat respons 302 didapat), dan gambar chapter sukses dimuat tanpa *crash*.
+- Jalankan `./gradlew spotlessApply`.
+- Pastikan:
+  - Gambar dimuat melalui Image Proxy jika pengguna mengisinya.
+  - Gambar tetap dimuat normal jika Image Proxy tidak disetel.
+  - Tidak ada regresi pada fitur yang sudah ada.
