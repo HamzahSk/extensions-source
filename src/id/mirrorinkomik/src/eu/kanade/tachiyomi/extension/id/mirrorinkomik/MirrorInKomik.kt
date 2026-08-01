@@ -428,6 +428,7 @@ abstract class MirrorInKomik :
             "Slice of Life",
             "Supernatural",
             "Webtoons",
+            "Yaoi"
         )
     }
 }
