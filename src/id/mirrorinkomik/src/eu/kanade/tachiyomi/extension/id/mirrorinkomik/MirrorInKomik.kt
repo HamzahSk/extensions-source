@@ -88,15 +88,38 @@ abstract class MirrorInKomik :
 
     private fun loginInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        // Only chapter reader pages require authentication.
-        if (!request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
-            return chain.proceed(request)
-        }
-        if (!isLoggedIn()) {
+        val path = request.url.encodedPath
+
+        // (Opsional) Pengecekan awal khusus untuk halaman chapter utama
+        // Biar hemat 1 request ke server kalau dari awal kita udah tau belum login
+        if (path.startsWith("/chapter/") && !path.contains("listchap") && !isLoggedIn()) {
             login()
         }
-        return chain.proceed(request)
+
+        // 1. Jalankan request ke server
+        var response = chain.proceed(request)
+
+        // 2. Tangkap kondisi khusus: 
+        // - Apakah HTTP code-nya 302?
+        // - ATAU apakah OkHttp secara otomatis sudah mengikuti redirect 302 itu ke "/login"?
+        val isCode302 = response.code == 302
+        val isRedirectedToLogin = response.request.url.encodedPath.startsWith("/login")
+
+        // Pokoknya kalo 302 atau terlempar ke login, langsung eksekusi!
+        if (isCode302 || isRedirectedToLogin) {
+            // Wajib tutup (close) body dari response lama biar nggak memory leak
+            response.close()
+            
+            // Paksa login untuk mendapatkan session/cookie baru
+            login()
+            
+            // Ulangi request aslinya (kali ini cookie baru akan otomatis menempel)
+            response = chain.proceed(request)
+        }
+
+        return response
     }
+
 
     private fun isLoggedIn(): Boolean = client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
 
