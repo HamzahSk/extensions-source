@@ -18,8 +18,11 @@ import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.getPreferencesLazy
 import keiyoushi.utils.parseAs
+import okhttp3.Cookie
+import okhttp3.CookieJar
 import okhttp3.FormBody
 import okhttp3.Headers
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -50,19 +53,60 @@ abstract class MirrorInKomik :
     private val usernamePref by lazy { preferences.getString(PREF_USERNAME, "") }
     private val passwordPref by lazy { preferences.getString(PREF_PASSWORD, "") }
 
-    // "Komik" is used by the site for the type of the load-more button on the latest page.
     private var lastId: String? = null
     private var lastScore: String? = null
 
+    // Membungkus CookieJar bawaan Tachiyomi agar cookie lain tetap terambil,
+    // sambil mencegah double cookie khusus untuk ci_session.
+    private val customCookieJar = object : CookieJar {
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+            val rawCookie = preferences.getString(PREF_COOKIE, "")?.trim()
+            val hasCustomSession = !rawCookie.isNullOrEmpty()
+
+            val cookiesToSave = if (hasCustomSession) {
+                // Jangan simpan ci_session dari web jika user pakai custom cookie
+                cookies.filter { it.name != SESSION_COOKIE }
+            } else {
+                cookies
+            }
+            network.client.cookieJar.saveFromResponse(url, cookiesToSave)
+        }
+
+        override fun loadForRequest(url: HttpUrl): List<Cookie> {
+            val originalCookies = network.client.cookieJar.loadForRequest(url)
+            val rawCookie = preferences.getString(PREF_COOKIE, "")?.trim()
+            
+            val customSession = if (rawCookie?.startsWith("$SESSION_COOKIE=") == true) {
+                rawCookie.substringAfter("$SESSION_COOKIE=").substringBefore(";")
+            } else {
+                rawCookie?.substringBefore(";")
+            }?.trim()
+
+            if (customSession.isNullOrEmpty()) {
+                return originalCookies
+            }
+
+            // Gabungkan cookie lain dari web dengan custom ci_session milik user
+            val modifiedCookies = originalCookies.filter { it.name != SESSION_COOKIE }.toMutableList()
+            modifiedCookies.add(
+                Cookie.Builder()
+                    .domain(baseUrlHost)
+                    .path("/")
+                    .name(SESSION_COOKIE)
+                    .value(customSession)
+                    .build()
+            )
+            return modifiedCookies
+        }
+    }
+
     override val client: OkHttpClient = network.client.newBuilder()
+        .cookieJar(customCookieJar) // Gunakan Custom CookieJar
         .addInterceptor(::loginInterceptor)
         .addInterceptor(::thumbnailInterceptor)
-        .addNetworkInterceptor(::cookieNetworkInterceptor) // Filter cookie di level jaringan
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
 
-    // The reader page requires a logged-in session; the listchap endpoint requires
-    // the full browser header set (User-Agent + Accept-Language + XHR + Sec-Fetch trio).
     private val readerHeaders: Headers = headersBuilder()
         .add("Accept", "*/*")
         .add("Accept-Language", "en-US,en;q=0.9")
@@ -76,58 +120,9 @@ abstract class MirrorInKomik :
         .add("X-Requested-With", "XMLHttpRequest")
         .build()
 
-    private fun cookieNetworkInterceptor(chain: Interceptor.Chain): Response {
-        val rawCookie = preferences.getString(PREF_COOKIE, "")?.trim()
-        
-        // Pembersihan input biar ngambil value-nya aja
-        val customSession = if (rawCookie?.startsWith("$SESSION_COOKIE=") == true) {
-            rawCookie.substringAfter("$SESSION_COOKIE=").substringBefore(";")
-        } else {
-            rawCookie?.substringBefore(";")
-        }?.trim()
-
-        var request = chain.request()
-
-        // 1. Kalau user pakai custom cookie, paksa masukin ke header request dan buang ci_session bawaan
-        if (!customSession.isNullOrEmpty()) {
-            val cookieHeader = request.header("Cookie")
-            val newCookieHeader = if (cookieHeader != null) {
-                val cookies = cookieHeader.split(";")
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() && !it.startsWith("$SESSION_COOKIE=") } // Cegah double cookie
-                (cookies + "$SESSION_COOKIE=$customSession").joinToString("; ")
-            } else {
-                "$SESSION_COOKIE=$customSession"
-            }
-
-            request = request.newBuilder()
-                .header("Cookie", newCookieHeader)
-                .build()
-        }
-
-        val response = chain.proceed(request)
-
-        // 2. Kalau custom cookie aktif, saring dan buang Set-Cookie ci_session dari server biar nggak di-save
-        if (!customSession.isNullOrEmpty()) {
-            val setCookieHeaders = response.headers("Set-Cookie")
-            if (setCookieHeaders.any { it.startsWith("$SESSION_COOKIE=") }) {
-                val responseBuilder = response.newBuilder().removeHeader("Set-Cookie")
-                for (header in setCookieHeaders) {
-                    if (!header.startsWith("$SESSION_COOKIE=")) { // Cuma buang ci_session, sisanya biarin
-                        responseBuilder.addHeader("Set-Cookie", header)
-                    }
-                }
-                return responseBuilder.build()
-            }
-        }
-
-        return response
-    }
-
     private fun loginInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
         
-        // Only chapter reader pages require authentication.
         if (!request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
             return chain.proceed(request)
         }
@@ -156,9 +151,6 @@ abstract class MirrorInKomik :
     }
 
     private fun isLoggedIn(): Boolean {
-        // Kalau custom cookie di-set, asumsikan selalu logged in (validasi nanti pas manggil API)
-        if (preferences.getString(PREF_COOKIE, "")?.isNotBlank() == true) return true
-        
         return client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
     }
 
@@ -409,7 +401,6 @@ abstract class MirrorInKomik :
         if (token == null) {
             val hasCustomCookie = preferences.getString(PREF_COOKIE, "")?.isNotBlank() == true
             if (hasCustomCookie) {
-                // Kalau user udah masukin cookie manual tapi gagal, jangan dipaksa login otomatis biar nggak ngerusak filter
                 throw IOException("Custom ci_session tidak valid atau sudah expired. Silakan perbarui di pengaturan ekstensi, atau kosongkan isian tersebut untuk login pakai username/password.")
             }
             
