@@ -18,7 +18,6 @@ import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.getPreferencesLazy
 import keiyoushi.utils.parseAs
-import okhttp3.Cookie
 import okhttp3.FormBody
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -50,16 +49,17 @@ abstract class MirrorInKomik :
 
     private val usernamePref by lazy { preferences.getString(PREF_USERNAME, "") }
     private val passwordPref by lazy { preferences.getString(PREF_PASSWORD, "") }
-    private val cookiePref by lazy { preferences.getString(PREF_COOKIE, "")?.trim() }
 
     // "Komik" is used by the site for the type of the load-more button on the latest page.
     private var lastId: String? = null
     private var lastScore: String? = null
+    
+    // Menyimpan state custom cookie agar tidak di-inject berulang-ulang kecuali nilainya berubah.
+    private var lastInjectedCookie: String? = null
 
     override val client: OkHttpClient = network.client.newBuilder()
         .addInterceptor(::loginInterceptor)
         .addInterceptor(::thumbnailInterceptor)
-        .addInterceptor(::cookieInterceptor)
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
 
@@ -78,46 +78,36 @@ abstract class MirrorInKomik :
         .add("X-Requested-With", "XMLHttpRequest")
         .build()
 
-    private fun cookieInterceptor(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        
-        // Jika ada cookie manual yang diset, tambahkan ke request
-        val cookie = cookiePref.takeIf { it.isNullOrBlank().not() }
-        if (cookie != null && !request.url.encodedPath.startsWith("/login")) {
-            val newRequest = request.newBuilder()
-                .header("Cookie", "$SESSION_COOKIE=$cookie")
-                .build()
-            return chain.proceed(newRequest)
-        }
-        
-        return chain.proceed(request)
-    }
-
     private fun loginInterceptor(chain: Interceptor.Chain): Response {
+        val rawCookie = preferences.getString(PREF_COOKIE, "")?.trim()
+        
+        // Pembersihan input: ambil value aslinya saja jika user tidak sengaja memasukkan format "ci_session=value;"
+        val customCookie = if (rawCookie?.startsWith("$SESSION_COOKIE=") == true) {
+            rawCookie.substringAfter("$SESSION_COOKIE=").substringBefore(";")
+        } else {
+            rawCookie?.substringBefore(";")
+        }?.trim()
+
+        // Jika ada custom cookie dan belum pernah di-inject (atau nilainya diubah oleh user), inject ke CookieJar.
+        if (!customCookie.isNullOrEmpty() && customCookie != lastInjectedCookie) {
+            val cookie = okhttp3.Cookie.Builder()
+                .domain(baseUrlHost)
+                .path("/")
+                .name(SESSION_COOKIE)
+                .value(customCookie)
+                .build()
+            client.cookieJar.saveFromResponse(baseUrl.toHttpUrl(), listOf(cookie))
+            lastInjectedCookie = customCookie
+        }
+
         val request = chain.request()
+        
         // Only chapter reader pages require authentication.
         if (!request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
             return chain.proceed(request)
         }
         
-        // Cek apakah cookie manual valid terlebih dahulu
-        val cookie = cookiePref.takeIf { it.isNullOrBlank().not() }
-        if (cookie != null) {
-            // Coba akses dengan cookie manual
-            val testRequest = GET("$baseUrl${request.url.encodedPath}", headers)
-            val testResponse = client.newCall(testRequest).execute()
-            try {
-                val body = testResponse.body?.string() ?: ""
-                // Jika response mengandung token reader atau chapter content, cookie valid
-                if (body.contains("#thisch") || body.contains("data-token")) {
-                    return chain.proceed(request)
-                }
-                // Cookie tidak valid, lanjutkan ke login
-            } finally {
-                testResponse.close()
-            }
-        }
-        
+        // Jika CookieJar masih belum mendeteksi sesi valid (baik dari custom cookie maupun sesi sebelumnya), lakukan login.
         if (!isLoggedIn()) {
             login()
         }
@@ -146,30 +136,11 @@ abstract class MirrorInKomik :
     private fun isLoggedIn(): Boolean = client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
 
     private fun login() {
-        // Jika ada cookie manual dan belum login, coba login dengan cookie terlebih dahulu
-        val cookie = cookiePref.takeIf { it.isNullOrBlank().not() }
-        if (cookie != null) {
-            // Test cookie dengan request ke halaman utama
-            try {
-                val testRequest = GET(baseUrl, headers)
-                client.newCall(testRequest).execute().use { response ->
-                    if (response.isSuccessful) {
-                        // Cookie mungkin valid, cek session
-                        if (isLoggedIn()) {
-                            return
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-                // Gagal, lanjut ke login normal
-            }
-        }
-
         val username = usernamePref.orEmpty()
         val password = passwordPref.orEmpty()
         
         if (username.isBlank() || password.isBlank()) {
-            throw IOException("Set your MirrorInKomik username and password in the source settings to read chapters.")
+            throw IOException("Set your MirrorInKomik username and password (or a valid custom ci_session cookie) in the source settings to read chapters.")
         }
 
         // 1. Client khusus GET: Cegat dan hapus cookie lama sebelum berangkat ke server
@@ -417,7 +388,7 @@ abstract class MirrorInKomik :
         var document = response.asJsoup()
         var token = document.selectFirst("#thisch")?.attr("data-token")
 
-        // Jika token tidak ditemukan, coba paksa login ulang dan request ulang halaman chapter-nya
+        // Jika token tidak ditemukan (baik dari custom cookie yang kadaluarsa atau sesi yang mati), paksa login ulang
         if (token == null) {
             login() // Memperbarui session/cookie di OkHttpClient
 
@@ -470,7 +441,7 @@ abstract class MirrorInKomik :
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         screen.addPreference(screen.editTextPreference(PREF_USERNAME, "MirrorInKomik username"))
         screen.addPreference(screen.editTextPreference(PREF_PASSWORD, "MirrorInKomik password", isPassword = true))
-        screen.addPreference(screen.editTextPreference(PREF_COOKIE, "MirrorInKomik Session Cookie (ci_session)", isPassword = true))
+        screen.addPreference(screen.editTextPreference(PREF_COOKIE, "Custom ci_session Cookie (Opsional)"))
         screen.addPreference(screen.editTextPreference(PREF_PROXY_URL, "Image Proxy URL"))
     }
 
@@ -487,7 +458,7 @@ abstract class MirrorInKomik :
     companion object {
         private const val PREF_USERNAME = "username"
         private const val PREF_PASSWORD = "password"
-        private const val PREF_COOKIE = "pref_cookie"
+        private const val PREF_COOKIE = "cookie_session"
         private const val PREF_PROXY_URL = "pref_proxy_url"
         private const val SESSION_COOKIE = "ci_session"
 
