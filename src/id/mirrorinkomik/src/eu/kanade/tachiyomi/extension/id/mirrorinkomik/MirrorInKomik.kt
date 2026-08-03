@@ -53,13 +53,11 @@ abstract class MirrorInKomik :
     // "Komik" is used by the site for the type of the load-more button on the latest page.
     private var lastId: String? = null
     private var lastScore: String? = null
-    
-    // Menyimpan state custom cookie agar tidak di-inject berulang-ulang kecuali nilainya berubah.
-    private var lastInjectedCookie: String? = null
 
     override val client: OkHttpClient = network.client.newBuilder()
         .addInterceptor(::loginInterceptor)
         .addInterceptor(::thumbnailInterceptor)
+        .addNetworkInterceptor(::cookieNetworkInterceptor) // Filter cookie di level jaringan
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
 
@@ -78,28 +76,55 @@ abstract class MirrorInKomik :
         .add("X-Requested-With", "XMLHttpRequest")
         .build()
 
-    private fun loginInterceptor(chain: Interceptor.Chain): Response {
+    private fun cookieNetworkInterceptor(chain: Interceptor.Chain): Response {
         val rawCookie = preferences.getString(PREF_COOKIE, "")?.trim()
         
-        // Pembersihan input: ambil value aslinya saja jika user tidak sengaja memasukkan format "ci_session=value;"
-        val customCookie = if (rawCookie?.startsWith("$SESSION_COOKIE=") == true) {
+        // Pembersihan input biar ngambil value-nya aja
+        val customSession = if (rawCookie?.startsWith("$SESSION_COOKIE=") == true) {
             rawCookie.substringAfter("$SESSION_COOKIE=").substringBefore(";")
         } else {
             rawCookie?.substringBefore(";")
         }?.trim()
 
-        // Jika ada custom cookie dan belum pernah di-inject (atau nilainya diubah oleh user), inject ke CookieJar.
-        if (!customCookie.isNullOrEmpty() && customCookie != lastInjectedCookie) {
-            val cookie = okhttp3.Cookie.Builder()
-                .domain(baseUrlHost)
-                .path("/")
-                .name(SESSION_COOKIE)
-                .value(customCookie)
+        var request = chain.request()
+
+        // 1. Kalau user pakai custom cookie, paksa masukin ke header request dan buang ci_session bawaan
+        if (!customSession.isNullOrEmpty()) {
+            val cookieHeader = request.header("Cookie")
+            val newCookieHeader = if (cookieHeader != null) {
+                val cookies = cookieHeader.split(";")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() && !it.startsWith("$SESSION_COOKIE=") } // Cegah double cookie
+                (cookies + "$SESSION_COOKIE=$customSession").joinToString("; ")
+            } else {
+                "$SESSION_COOKIE=$customSession"
+            }
+
+            request = request.newBuilder()
+                .header("Cookie", newCookieHeader)
                 .build()
-            client.cookieJar.saveFromResponse(baseUrl.toHttpUrl(), listOf(cookie))
-            lastInjectedCookie = customCookie
         }
 
+        val response = chain.proceed(request)
+
+        // 2. Kalau custom cookie aktif, saring dan buang Set-Cookie ci_session dari server biar nggak di-save
+        if (!customSession.isNullOrEmpty()) {
+            val setCookieHeaders = response.headers("Set-Cookie")
+            if (setCookieHeaders.any { it.startsWith("$SESSION_COOKIE=") }) {
+                val responseBuilder = response.newBuilder().removeHeader("Set-Cookie")
+                for (header in setCookieHeaders) {
+                    if (!header.startsWith("$SESSION_COOKIE=")) { // Cuma buang ci_session, sisanya biarin
+                        responseBuilder.addHeader("Set-Cookie", header)
+                    }
+                }
+                return responseBuilder.build()
+            }
+        }
+
+        return response
+    }
+
+    private fun loginInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
         
         // Only chapter reader pages require authentication.
@@ -107,7 +132,6 @@ abstract class MirrorInKomik :
             return chain.proceed(request)
         }
         
-        // Jika CookieJar masih belum mendeteksi sesi valid (baik dari custom cookie maupun sesi sebelumnya), lakukan login.
         if (!isLoggedIn()) {
             login()
         }
@@ -117,7 +141,6 @@ abstract class MirrorInKomik :
     private fun thumbnailInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
 
-        // Cek apakah request mengarah ke domain CDN gambar/thumbnail
         if (request.url.host == "cdngue.my.id") {
             val newRequest = request.newBuilder()
                 .header("X-Requested-With", "XMLHttpRequest")
@@ -129,21 +152,24 @@ abstract class MirrorInKomik :
             return chain.proceed(newRequest)
         }
 
-        // Lanjutkan request normal untuk URL lainnya (seperti API atau HTML)
         return chain.proceed(request)
     }
 
-    private fun isLoggedIn(): Boolean = client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
+    private fun isLoggedIn(): Boolean {
+        // Kalau custom cookie di-set, asumsikan selalu logged in (validasi nanti pas manggil API)
+        if (preferences.getString(PREF_COOKIE, "")?.isNotBlank() == true) return true
+        
+        return client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
+    }
 
     private fun login() {
         val username = usernamePref.orEmpty()
         val password = passwordPref.orEmpty()
         
         if (username.isBlank() || password.isBlank()) {
-            throw IOException("Set your MirrorInKomik username and password (or a valid custom ci_session cookie) in the source settings to read chapters.")
+            throw IOException("Set your MirrorInKomik username and password in the source settings to read chapters.")
         }
 
-        // 1. Client khusus GET: Cegat dan hapus cookie lama sebelum berangkat ke server
         val getLoginClient = client.newBuilder()
             .addNetworkInterceptor { chain ->
                 val cleanRequest = chain.request().newBuilder()
@@ -153,14 +179,12 @@ abstract class MirrorInKomik :
             }
             .build()
 
-        // 2. Ambil halaman login tanpa cookie (Cookie baru dari server otomatis masuk ke CookieJar utama)
         val loginPageRequest = GET("$baseUrl/login", headers)
         val document = getLoginClient.newCall(loginPageRequest).execute().use { it.asJsoup() }
         
         val csrf = document.selectFirst("input[name=csrf_test_name]")?.attr("value")
             ?: throw IOException("Could not load the login page.")
 
-        // 3. Eksekusi POST login pakai client utama dengan data form
         val formBody = FormBody.Builder()
             .addEncoded("csrf_test_name", csrf)
             .addEncoded("login", username)
@@ -180,7 +204,6 @@ abstract class MirrorInKomik :
         }
     }
 
-    // Popular: homepage "Popular Updates" section (12 cards), single page.
     override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/", headers)
 
     override fun popularMangaParse(response: Response): MangasPage {
@@ -198,7 +221,6 @@ abstract class MirrorInKomik :
             ?: element.selectFirst("img")?.attr("abs:src")
     }
 
-    // Latest: /list-update then /loadmore-type?type=Komik&last_id=<id>
     override fun latestUpdatesRequest(page: Int): Request = if (page == 1) {
         lastId = null
         GET("$baseUrl/list-update", headers)
@@ -227,7 +249,6 @@ abstract class MirrorInKomik :
         thumbnail_url = element.selectFirst(".komik-cover img")?.attr("abs:src")
     }
 
-    // Search: /cari?s=<query> then /loadmore-search?keyword=<query>&last_id=<id>&last_score=<score>
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         if (query.isBlank()) {
             val typeFilter = filters.firstOrNull { it is TypeFilter } as? TypeFilter
@@ -281,7 +302,6 @@ abstract class MirrorInKomik :
     }
 
     private fun searchResultsFrom(document: Document): List<SManga> {
-        // Search rows (first page and loadmore fragment) share the same div structure.
         val rows = document.select("""div[class*="border-b-base-200"]""")
         if (rows.isNotEmpty()) {
             return rows.mapNotNull { mangaFromSearchRow(it) }
@@ -298,7 +318,6 @@ abstract class MirrorInKomik :
     }
 
     private fun mangaFromSearchRow(element: Element): SManga? {
-        // Skip the ad iframe row (no manga link).
         if (element.selectFirst("iframe") != null) return null
         val link = element.selectFirst("a[href]") ?: return null
         val title = element.selectFirst("h3 a")?.text()?.takeIf(String::isNotBlank) ?: return null
@@ -364,7 +383,6 @@ abstract class MirrorInKomik :
     }
 
     private fun parseRelativeTime(link: Element): Long {
-        // Chapter dates are relative Indonesian strings; fall back to 0 when unparseable.
         val row = link.parent()?.parent() ?: return 0L
         val text = row.selectFirst("time")?.text() ?: return 0L
         val pattern = Regex("""(\d+)\s+(menit|jam|hari|minggu|bulan|tahun) lalu""")
@@ -388,11 +406,15 @@ abstract class MirrorInKomik :
         var document = response.asJsoup()
         var token = document.selectFirst("#thisch")?.attr("data-token")
 
-        // Jika token tidak ditemukan (baik dari custom cookie yang kadaluarsa atau sesi yang mati), paksa login ulang
         if (token == null) {
-            login() // Memperbarui session/cookie di OkHttpClient
+            val hasCustomCookie = preferences.getString(PREF_COOKIE, "")?.isNotBlank() == true
+            if (hasCustomCookie) {
+                // Kalau user udah masukin cookie manual tapi gagal, jangan dipaksa login otomatis biar nggak ngerusak filter
+                throw IOException("Custom ci_session tidak valid atau sudah expired. Silakan perbarui di pengaturan ekstensi, atau kosongkan isian tersebut untuk login pakai username/password.")
+            }
+            
+            login() 
 
-            // Request ulang ke URL asli chapter dengan cookie yang sudah diperbarui
             val retryRequest = GET(response.request.url.toString(), headers)
             val retryResponse = client.newCall(retryRequest).execute()
 
@@ -441,7 +463,7 @@ abstract class MirrorInKomik :
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         screen.addPreference(screen.editTextPreference(PREF_USERNAME, "MirrorInKomik username"))
         screen.addPreference(screen.editTextPreference(PREF_PASSWORD, "MirrorInKomik password", isPassword = true))
-        screen.addPreference(screen.editTextPreference(PREF_COOKIE, "Custom ci_session Cookie (Opsional)"))
+        screen.addPreference(screen.editTextPreference(PREF_COOKIE, "Custom ci_session Cookie (Akan diprioritaskan)"))
         screen.addPreference(screen.editTextPreference(PREF_PROXY_URL, "Image Proxy URL"))
     }
 
