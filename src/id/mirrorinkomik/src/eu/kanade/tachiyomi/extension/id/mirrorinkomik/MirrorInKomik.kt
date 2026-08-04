@@ -107,6 +107,9 @@ abstract class MirrorInKomik :
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
 
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
+        .add("Referer", "$baseUrl/")
+        
     private val readerHeaders: Headers = headersBuilder()
         .add("Accept", "*/*")
         .add("Accept-Language", "en-US,en;q=0.9")
