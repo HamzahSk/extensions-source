@@ -390,7 +390,7 @@ abstract class MirrorInKomik :
             }
             .reversed()
     }
-
+ 
     private fun parseRelativeTime(link: Element): Long {
         val row = link.parent()?.parent() ?: return 0L
         val text = row.selectFirst("time")?.text() ?: return 0L
