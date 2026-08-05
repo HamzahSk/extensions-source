@@ -18,6 +18,8 @@ import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.getPreferencesLazy
 import keiyoushi.utils.parseAs
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.FormBody
@@ -243,52 +245,64 @@ abstract class MirrorInKomik :
         title = element.selectFirst(".komik-info h3")?.text()?.takeIf(String::isNotBlank) ?: return null
         thumbnail_url = element.selectFirst(".komik-cover img")?.attr("abs:src")
     }
+    
+        // JANGAN LUPA GANTI URL INI DENGAN DOMAIN VERCEL KAMU!
+    private val vercelApiUrl = "https://data-komik.vercel.app/api/search"
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        if (query.isBlank()) {
-            val typeFilter = filters.firstOrNull { it is TypeFilter } as? TypeFilter
-            val genreFilter = filters.firstOrNull { it is GenreFilter } as? GenreFilter
-            return when {
-                genreFilter?.state != 0 -> {
-                    val genre = genreFilter!!.values[genreFilter.state]
-                    if (page == 1) {
-                        lastId = null
-                        GET("$baseUrl/Genre/$genre", headers)
-                    } else {
-                        GET("$baseUrl/loadmore-type?type=$genre&last_id=$lastId", xhrHeaders)
-                    }
-                }
-                typeFilter?.state != 0 -> {
-                    val type = typeFilter!!.values[typeFilter.state]
-                    if (page == 1) {
-                        lastId = null
-                        GET("$baseUrl/$type", headers)
-                    } else {
-                        GET("$baseUrl/loadmore-type?type=$type&last_id=$lastId", xhrHeaders)
-                    }
-                }
-                else -> popularMangaRequest(page)
+        // Karena Vercel me-return semua data sekaligus tanpa halaman (pagination),
+        // kita cegah aplikasi untuk me-request halaman ke-2 dan seterusnya.
+        if (page > 1) {
+            throw IOException("Semua hasil sudah ditampilkan di halaman pertama.")
+        }
+
+        val url = vercelApiUrl.toHttpUrl().newBuilder()
+
+        // 1. Masukkan Query (Kata Kunci)
+        if (query.isNotBlank()) {
+            url.addQueryParameter("q", query)
+        }
+
+        // 2. Masukkan Filter Genre (Logika DAN / AND)
+        val genreFilter = filters.filterIsInstance<GenreFilter>().firstOrNull()
+        if (genreFilter != null) {
+            // Ambil nama genre yang statusnya dicentang (true)
+            val selectedGenres = genreFilter.state
+                .filter { it.state }
+                .map { it.id }
+                .joinToString(",")
+            
+            if (selectedGenres.isNotEmpty()) {
+                url.addQueryParameter("filter", selectedGenres)
             }
         }
-        return if (page == 1) {
-            lastId = null
-            lastScore = null
-            GET("$baseUrl/cari?s=$query", headers)
-        } else {
-            GET("$baseUrl/loadmore-search?keyword=$query&last_id=$lastId&last_score=$lastScore", xhrHeaders)
-        }
+
+        // Hit API Vercel (Kita pakai header bawaan OkHttp biasa)
+        return GET(url.build().toString(), headersBuilder().build())
     }
 
     override fun searchMangaParse(response: Response): MangasPage {
-        val body = response.body.string().trimStart()
-        if (body.startsWith("{")) {
-            val json = body.parseAs<LoadMoreResponse>()
-            lastId = json.lastId?.takeIf { it != "0" }
-            lastScore = json.lastScore
-            val document = Jsoup.parse(json.html)
-            val mangas = searchResultsFrom(document)
-            return MangasPage(mangas, lastId != null && mangas.isNotEmpty())
+        val body = response.body.string()
+
+        // Mengecek apakah respons berasal dari API Vercel buatan kita
+        if (response.request.url.host.contains("vercel.app")) {
+            val json = body.parseAs<VercelSearchResponse>()
+            
+            val mangas = json.data.map { item ->
+                SManga.create().apply {
+                    title = item.title
+                    // setUrlWithoutDomain otomatis membuang "https://mirrorinkomik.my.id" 
+                    // dan menyisakan path-nya saja (misal: /manhwa/solo-leveling)
+                    setUrlWithoutDomain(item.url)
+                    thumbnail_url = item.thumbnail_url
+                }
+            }
+            
+            // hasNextPage = false karena semua data Vercel dikirim di 1 halaman penuh
+            return MangasPage(mangas, false)
         }
+
+        // Fallback: Jika suatu saat gagal dan request kembali ke web asli
         val document = Jsoup.parse(body)
         val mangas = searchResultsFrom(document)
         lastId = document.selectFirst("#load-more")?.attr("data-last-id")?.takeIf { it != "0" }
@@ -430,11 +444,6 @@ abstract class MirrorInKomik :
         }
     }
 
-    override fun getFilterList(): FilterList = FilterList(
-        TypeFilter(),
-        GenreFilter(genreValues),
-    )
-
     override fun imageUrlParse(response: Response): String = response.request.url.toString()
 
     override fun imageRequest(page: Page): Request {
@@ -452,7 +461,14 @@ abstract class MirrorInKomik :
 
     private class TypeFilter : Filter.Select<String>("Type", arrayOf("Manga", "Manhwa", "Manhua"), 0)
 
-    private class GenreFilter(values: Array<String>) : Filter.Select<String>("Genre", arrayOf("All") + values, 0)
+    private class GenreCheckBox(name: String, val id: String) : Filter.CheckBox(name)
+    
+    private class GenreFilter(genres: List<GenreCheckBox>) : Filter.Group<GenreCheckBox>("Genre (Bisa pilih banyak)", genres)
+
+    override fun getFilterList(): FilterList = FilterList(
+        TypeFilter(),
+        GenreFilter(genreValues.map { GenreCheckBox(it, it) })
+    )
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         screen.addPreference(screen.editTextPreference(PREF_USERNAME, "MirrorInKomik username"))
