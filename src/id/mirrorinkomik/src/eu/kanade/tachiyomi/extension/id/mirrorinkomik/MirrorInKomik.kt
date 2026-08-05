@@ -294,7 +294,7 @@ abstract class MirrorInKomik :
                     // setUrlWithoutDomain otomatis membuang "https://mirrorinkomik.my.id" 
                     // dan menyisakan path-nya saja (misal: /manhwa/solo-leveling)
                     setUrlWithoutDomain(item.url)
-                    thumbnail_url = item.thumbnail_url
+                    thumbnail_url = item.thumbnailUrl
                 }
             }
             
@@ -390,7 +390,7 @@ abstract class MirrorInKomik :
             }
             .reversed()
     }
- 
+
     private fun parseRelativeTime(link: Element): Long {
         val row = link.parent()?.parent() ?: return 0L
         val text = row.selectFirst("time")?.text() ?: return 0L
