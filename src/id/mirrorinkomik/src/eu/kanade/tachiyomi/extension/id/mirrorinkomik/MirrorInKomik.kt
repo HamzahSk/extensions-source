@@ -429,11 +429,11 @@ abstract class MirrorInKomik :
             }
             
             // Masukkan gambar yang sudah bersih ke penampil komik
-            filteredUrls.mapIndexed { index, url -> Page(index, url) }
+            filteredUrls.mapIndexed { index, url -> Page(index, imageUrl = url) }
         }
     }
 
-    override fun imageUrlParse(response: Response): String = response.request.url.toString()
+    override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
     override fun imageRequest(page: Page): Request {
         var imageUrl = page.imageUrl!!
