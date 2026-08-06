@@ -4,8 +4,8 @@ plugins {
 
 keiyoushi {
     name = "MirrorInKomik"
-    versionCode = 1
-    contentWarning = ContentWarning.SAFE
+    versionCode = 2
+    contentWarning = ContentWarning.NSFW
     libVersion = "1.4"
 
     source {
