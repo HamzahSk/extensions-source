@@ -81,7 +81,7 @@ for info_file in ARTIFACTS_DIR.glob("**/keiyoushi-source-info.json"):
             packageName=package_name,
             resources=index_pb2.Resources(
                 apkUrl=f"{APK_BASE_URL}/{apk.name}",
-                jarUrl=f"{JAR_BASE_URL}/{jar.name}",
+                # jarUrl=f"{JAR_BASE_URL}/{jar.name}",
                 iconUrl=get_icon_url(info["module"], info.get("theme")),
             ),
             extensionLib=info["extensionLib"],
