@@ -32,6 +32,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - id: generate-matrices
         name: Generate build matrices
