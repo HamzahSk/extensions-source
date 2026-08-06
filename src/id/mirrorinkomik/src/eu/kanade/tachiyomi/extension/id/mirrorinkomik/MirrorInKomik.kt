@@ -105,7 +105,6 @@ abstract class MirrorInKomik :
     override val client: OkHttpClient = network.client.newBuilder()
         .cookieJar(customCookieJar) // Gunakan Custom CookieJar
         .addInterceptor(::loginInterceptor)
-        .addInterceptor(::thumbnailInterceptor)
         .rateLimit(2) { it.host == baseUrlHost }
         .build()
 
@@ -135,23 +134,6 @@ abstract class MirrorInKomik :
         if (!isLoggedIn()) {
             login()
         }
-        return chain.proceed(request)
-    }
-
-    private fun thumbnailInterceptor(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-
-        if (request.url.host == "cdngue.my.id") {
-            val newRequest = request.newBuilder()
-                .header("X-Requested-With", "XMLHttpRequest")
-                .header("Sec-Fetch-Site", "same-origin")
-                .header("Sec-Fetch-Mode", "cors")
-                .header("Sec-Fetch-Dest", "empty")
-                .header("Referer", "$baseUrl/")
-                .build()
-            return chain.proceed(newRequest)
-        }
-
         return chain.proceed(request)
     }
 
@@ -442,7 +424,7 @@ abstract class MirrorInKomik :
             
             // MENYARING (FILTER) GAMBAR IKLAN
             val filteredUrls = urls.filterNot { url ->
-                url.contains("pasang-iklan.png") || url.contains("Bookmark-Dulu.webp")
+                url.contains("pasang-iklan.png") || url.contains("pasang-iklan5.png") || url.contains("Bookmark-Dulu.webp")
             }
 
             // Kalau setelah difilter ternyata kosong, berarti chapter beneran belum ada isinya
@@ -460,6 +442,7 @@ abstract class MirrorInKomik :
     override fun imageRequest(page: Page): Request {
         var imageUrl = page.imageUrl!!
         val proxyUrl = preferences.getString(PREF_PROXY_URL, "")?.trim()
+        
         if (!proxyUrl.isNullOrEmpty()) {
             imageUrl = if (proxyUrl.contains("%s")) {
                 proxyUrl.format(imageUrl)
@@ -467,7 +450,17 @@ abstract class MirrorInKomik :
                 "$proxyUrl$imageUrl"
             }
         }
-        return GET(imageUrl, headers)
+
+        // Gunakan headersBuilder() lalu .add()
+        val imageHeaders = headersBuilder()
+            .add("X-Requested-With", "XMLHttpRequest")
+            .add("Sec-Fetch-Site", "same-origin")
+            .add("Sec-Fetch-Mode", "cors")
+            .add("Sec-Fetch-Dest", "empty")
+            .add("Referer", "$baseUrl/")
+            .build()
+        
+        return GET(imageUrl, imageHeaders)
     }
 
     private class TypeFilter : Filter.Select<String>("Type", arrayOf("Manga", "Manhwa", "Manhua"), 0)
