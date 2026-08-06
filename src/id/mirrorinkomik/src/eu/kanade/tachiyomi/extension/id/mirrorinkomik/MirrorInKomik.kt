@@ -232,23 +232,21 @@ abstract class MirrorInKomik :
     private val vercelApiUrl = "https://data-komik.vercel.app/api/search"
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        // Karena Vercel me-return semua data sekaligus tanpa halaman (pagination),
-        // kita cegah aplikasi untuk me-request halaman ke-2 dan seterusnya.
-        if (page > 1) {
-            throw IOException("Semua hasil sudah ditampilkan di halaman pertama.")
-        }
-
         val url = vercelApiUrl.toHttpUrl().newBuilder()
 
-        // 1. Masukkan Query (Kata Kunci)
+        // 1. Masukkan parameter page dari aplikasi (Tachiyomi otomatis mengirim 1, 2, 3...)
+        url.addQueryParameter("page", page.toString())
+        // Limit tidak wajib dikirim karena di backend sudah default 25, 
+        // tapi bisa ditambahkan kalau mau: url.addQueryParameter("limit", "25")
+
+        // 2. Masukkan Query (Kata Kunci)
         if (query.isNotBlank()) {
             url.addQueryParameter("q", query)
         }
 
-        // 2. Masukkan Filter Genre (Logika DAN / AND)
+        // 3. Masukkan Filter Genre (Logika DAN / AND)
         val genreFilter = filters.filterIsInstance<GenreFilter>().firstOrNull()
         if (genreFilter != null) {
-            // Ambil nama genre yang statusnya dicentang (true)
             val selectedGenres = genreFilter.state
                 .filter { it.state }
                 .map { it.id }
@@ -259,7 +257,6 @@ abstract class MirrorInKomik :
             }
         }
 
-        // Hit API Vercel (Kita pakai header bawaan OkHttp biasa)
         return GET(url.build().toString(), headersBuilder().build())
     }
 
@@ -273,18 +270,18 @@ abstract class MirrorInKomik :
             val mangas = json.data.map { item ->
                 SManga.create().apply {
                     title = item.title
-                    // setUrlWithoutDomain otomatis membuang "https://mirrorinkomik.my.id" 
-                    // dan menyisakan path-nya saja (misal: /manhwa/solo-leveling)
                     setUrlWithoutDomain(item.url)
-                    thumbnail_url = item.thumbnailUrl
+                    thumbnail_url = item.thumbnailUrl ?: item.thumbnail_url
                 }
             }
             
-            // hasNextPage = false karena semua data Vercel dikirim di 1 halaman penuh
-            return MangasPage(mangas, false)
+            // Baca status has_next_page dari object pagination Vercel
+            val hasNextPage = json.pagination?.has_next_page ?: false
+            
+            return MangasPage(mangas, hasNextPage)
         }
 
-        // Fallback: Jika suatu saat gagal dan request kembali ke web asli
+        // Fallback: Jika request kembali ke web asli
         val document = Jsoup.parse(body)
         val mangas = searchResultsFrom(document)
         lastId = document.selectFirst("#load-more")?.attr("data-last-id")?.takeIf { it != "0" }
@@ -498,29 +495,126 @@ abstract class MirrorInKomik :
         private const val SESSION_COOKIE = "ci_session"
 
         private val genreValues = arrayOf(
+            "4-Koma",
             "Action",
+            "Adaptation",
             "Adventure",
+            "Age Gap",
+            "Aliens",
+            "Animals",
+            "Anthology",
+            "BDSM",
+            "Beasts",
+            "Bloody",
+            "Bodyswap",
+            "Boys",
+            "Business",
+            "Campus",
+            "Celebrity",
+            "Cheating",
+            "Childhood Friends",
+            "College Life",
             "Comedy",
+            "Cooking",
+            "Crime",
+            "Crossdressing",
+            "Cunnilingus",
+            "Delinguents",
+            "Dementia",
             "Demons",
+            "Doujinshi",
             "Drama",
+            "Dungeons",
             "Ecchi",
+            "Exhibitionism",
             "Fantasy",
+            "Femdom",
+            "Fetish",
+            "Fingering",
+            "Game",
+            "Gender Bender",
+            "Ghosts",
+            "Girls",
+            "Glasses",
+            "Gore",
+            "Guideverse",
+            "Gyaru",
             "Harem",
+            "Hentai",
             "Historical",
+            "Horror",
+            "Incest",
+            "Infidelity",
             "Isekai",
+            "Josei",
+            "Kids",
+            "Lolicon",
+            "Mafia",
             "Magic",
             "Martial Art",
+            "Mature",
+            "Mecha",
+            "Medical",
+            "Milf",
             "Military",
+            "Monsters",
+            "Music",
+            "Mystery",
+            "Nakadashi",
+            "Ninja",
+            "Non-human",
+            "NTR",
+            "Obsession",
+            "Office Workers",
+            "Omegaverse",
+            "One Shot",
+            "Parodi",
+            "Philosophical",
+            "Police",
+            "Post-Apocalyptic",
+            "Project",
+            "Psychological",
+            "Regression",
             "Reincarnation",
+            "Revenge",
+            "Reverse Harem",
+            "Reverse Isekai",
             "Romance",
+            "Royal Family",
+            "Royalty",
+            "Samurai",
             "School",
+            "Sci-fi",
             "Seinen",
+            "Shotacon",
             "Shoujo",
+            "Shoujo Ai",
             "Shounen",
+            "Shounen Ai",
+            "Showbiz",
             "Slice of Life",
+            "Sport",
+            "Super Power",
             "Supernatural",
+            "Survival",
+            "System",
+            "Thriller",
+            "Time Travel",
+            "Tragedy",
+            "Transmigration",
+            "Vampire",
+            "Vanilla",
+            "Villain",
+            "Villainess",
+            "Violence",
+            "Virgin",
+            "Virtual Reality",
             "Webtoons",
+            "Yakuzas",
             "Yaoi",
+            "Yuri",
+            "Zombies",
+            "18+",
         )
     }
 }
