@@ -271,7 +271,7 @@ abstract class MirrorInKomik :
                 SManga.create().apply {
                     title = item.title
                     setUrlWithoutDomain(item.url)
-                    thumbnail_url = item.thumbnailUr
+                    thumbnail_url = item.thumbnailUrl
                 }
             }
             
