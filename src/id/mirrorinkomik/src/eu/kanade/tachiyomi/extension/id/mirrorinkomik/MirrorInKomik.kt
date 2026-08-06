@@ -370,7 +370,6 @@ abstract class MirrorInKomik :
                     date_upload = parseRelativeTime(link)
                 }
             }
-            .reversed()
     }
 
     private fun parseRelativeTime(link: Element): Long {
