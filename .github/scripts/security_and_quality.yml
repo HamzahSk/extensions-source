@@ -1,0 +1,113 @@
+name: Security & Code Quality Audit
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  security-events: write
+
+jobs:
+  # 1. ANALISIS KEAMANAN & VULNERABILITY SCAN
+  security-scan:
+    name: Security & Vulnerability Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review (PR Only)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+      - name: Scan Repository with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+  # 2. DETEKSI BUG, ERROR & KUALITAS KODE
+  code-quality-and-test:
+    name: Lint, Static Analysis & Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Auto-fix Code Format (Spotless)
+        run: ./gradlew spotlessApply
+
+      # Simpan file fix ke folder sementara
+      - name: Prepare Fixed Files for Artifact
+        id: check_fixes
+        run: |
+          if [[ -n $(git status -s) ]]; then
+            echo "has_fixes=true" >> $GITHUB_OUTPUT
+            mkdir -p /tmp/spotless-fixes
+            # Kopi file yang berubah beserta struktur foldernya secara otomatis
+            git diff --name-only | xargs -I {} cp --parents {} /tmp/spotless-fixes/
+          else
+            echo "has_fixes=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Upload folder sementara tadi jadi Artifact
+      - name: Upload Spotless Fixes Artifact
+        if: steps.check_fixes.outputs.has_fixes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spotless-fixed-files-${{ github.sha }}
+          path: /tmp/spotless-fixes/
+          retention-days: 7
+
+      - name: Run Android Lint (Non-blocking)
+        run: ./gradlew lint
+        continue-on-error: true
+
+      - name: Run Unit Tests (Non-blocking)
+        id: run_tests
+        run: ./gradlew test
+        continue-on-error: true
+
+      - name: Upload Lint Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-report-${{ github.sha }}
+          path: '**/build/reports/lint-results*.html'
+          retention-days: 7
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report-${{ github.sha }}
+          path: '**/build/reports/tests/test*/**'
+          retention-days: 7
