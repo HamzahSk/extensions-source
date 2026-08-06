@@ -436,11 +436,22 @@ abstract class MirrorInKomik :
             if (!listResponse.isSuccessful) {
                 throw IOException("Failed to load the chapter pages (HTTP ${listResponse.code}).")
             }
+            
+            // Mengambil semua URL gambar dari API
             val urls = listResponse.body.string().parseAs<List<String>>()
-            if (urls.isEmpty() || urls.first().contains("Bookmark-Dulu")) {
+            
+            // MENYARING (FILTER) GAMBAR IKLAN
+            val filteredUrls = urls.filterNot { url ->
+                url.contains("pasang-iklan.png") || url.contains("Bookmark-Dulu.webp")
+            }
+
+            // Kalau setelah difilter ternyata kosong, berarti chapter beneran belum ada isinya
+            if (filteredUrls.isEmpty()) {
                 throw IOException("Chapter images are not available yet.")
             }
-            urls.mapIndexed { index, url -> Page(index, url) }
+            
+            // Masukkan gambar yang sudah bersih ke penampil komik
+            filteredUrls.mapIndexed { index, url -> Page(index, url) }
         }
     }
 
