@@ -18,7 +18,6 @@ import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.getPreferencesLazy
 import keiyoushi.utils.parseAs
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -77,7 +76,7 @@ abstract class MirrorInKomik :
         override fun loadForRequest(url: HttpUrl): List<Cookie> {
             val originalCookies = network.client.cookieJar.loadForRequest(url)
             val rawCookie = preferences.getString(PREF_COOKIE, "")?.trim()
-            
+
             val customSession = if (rawCookie?.startsWith("$SESSION_COOKIE=") == true) {
                 rawCookie.substringAfter("$SESSION_COOKIE=").substringBefore(";")
             } else {
@@ -96,7 +95,7 @@ abstract class MirrorInKomik :
                     .path("/")
                     .name(SESSION_COOKIE)
                     .value(customSession)
-                    .build()
+                    .build(),
             )
             return modifiedCookies
         }
@@ -110,7 +109,7 @@ abstract class MirrorInKomik :
 
     override fun headersBuilder(): Headers.Builder = super.headersBuilder()
         .add("Referer", "$baseUrl/")
-        
+
     private val readerHeaders: Headers = headersBuilder()
         .add("Accept", "*/*")
         .add("Accept-Language", "en-US,en;q=0.9")
@@ -126,25 +125,23 @@ abstract class MirrorInKomik :
 
     private fun loginInterceptor(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        
+
         if (!request.url.encodedPath.startsWith("/chapter/") || request.url.encodedPath.contains("listchap")) {
             return chain.proceed(request)
         }
-        
+
         if (!isLoggedIn()) {
             login()
         }
         return chain.proceed(request)
     }
 
-    private fun isLoggedIn(): Boolean {
-        return client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
-    }
+    private fun isLoggedIn(): Boolean = client.cookieJar.loadForRequest(baseUrl.toHttpUrl()).any { it.name == SESSION_COOKIE }
 
     private fun login() {
         val username = usernamePref.orEmpty()
         val password = passwordPref.orEmpty()
-        
+
         if (username.isBlank() || password.isBlank()) {
             throw IOException("Set your MirrorInKomik username and password in the source settings to read chapters.")
         }
@@ -160,7 +157,7 @@ abstract class MirrorInKomik :
 
         val loginPageRequest = GET("$baseUrl/login", headers)
         val document = getLoginClient.newCall(loginPageRequest).execute().use { it.asJsoup() }
-        
+
         val csrf = document.selectFirst("input[name=csrf_test_name]")?.attr("value")
             ?: throw IOException("Could not load the login page.")
 
@@ -169,15 +166,15 @@ abstract class MirrorInKomik :
             .addEncoded("login", username)
             .addEncoded("password", password)
             .build()
-            
+
         val loginRequest = POST("$baseUrl/login", headersBuilder().build(), formBody)
-        
+
         client.newCall(loginRequest).execute().use { response ->
             if (response.code !in 200..399) {
                 throw IOException("Login failed (HTTP ${response.code}). Check your credentials.")
             }
         }
-        
+
         if (!isLoggedIn()) {
             throw IOException("Login failed. Check your credentials.")
         }
@@ -227,8 +224,8 @@ abstract class MirrorInKomik :
         title = element.selectFirst(".komik-info h3")?.text()?.takeIf(String::isNotBlank) ?: return null
         thumbnail_url = element.selectFirst(".komik-cover img")?.attr("abs:src")
     }
-    
-        // JANGAN LUPA GANTI URL INI DENGAN DOMAIN VERCEL KAMU!
+
+    // JANGAN LUPA GANTI URL INI DENGAN DOMAIN VERCEL KAMU!
     private val vercelApiUrl = "https://data-komik.vercel.app/api/search"
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
@@ -236,7 +233,7 @@ abstract class MirrorInKomik :
 
         // 1. Masukkan parameter page dari aplikasi (Tachiyomi otomatis mengirim 1, 2, 3...)
         url.addQueryParameter("page", page.toString())
-        // Limit tidak wajib dikirim karena di backend sudah default 25, 
+        // Limit tidak wajib dikirim karena di backend sudah default 25,
         // tapi bisa ditambahkan kalau mau: url.addQueryParameter("limit", "25")
 
         // 2. Masukkan Query (Kata Kunci)
@@ -251,7 +248,7 @@ abstract class MirrorInKomik :
                 .filter { it.state }
                 .map { it.id }
                 .joinToString(",")
-            
+
             if (selectedGenres.isNotEmpty()) {
                 url.addQueryParameter("filter", selectedGenres)
             }
@@ -266,7 +263,7 @@ abstract class MirrorInKomik :
         // Mengecek apakah respons berasal dari API Vercel buatan kita
         if (response.request.url.host.contains("vercel.app")) {
             val json = body.parseAs<VercelSearchResponse>()
-            
+
             val mangas = json.data.map { item ->
                 SManga.create().apply {
                     title = item.title
@@ -274,10 +271,10 @@ abstract class MirrorInKomik :
                     thumbnail_url = item.thumbnailUrl
                 }
             }
-            
+
             // Baca status has_next_page dari object pagination Vercel
             val hasNextPage = json.pagination?.has_next_page ?: false
-            
+
             return MangasPage(mangas, hasNextPage)
         }
 
@@ -398,8 +395,8 @@ abstract class MirrorInKomik :
             if (hasCustomCookie) {
                 throw IOException("Custom ci_session tidak valid atau sudah expired. Silakan perbarui di pengaturan ekstensi, atau kosongkan isian tersebut untuk login pakai username/password.")
             }
-            
-            login() 
+
+            login()
 
             val retryRequest = GET(response.request.url.toString(), headers)
             val retryResponse = client.newCall(retryRequest).execute()
@@ -414,10 +411,10 @@ abstract class MirrorInKomik :
             if (!listResponse.isSuccessful) {
                 throw IOException("Failed to load the chapter pages (HTTP ${listResponse.code}).")
             }
-            
+
             // Mengambil semua URL gambar dari API
             val urls = listResponse.body.string().parseAs<List<String>>()
-            
+
             // MENYARING (FILTER) GAMBAR IKLAN
             val filteredUrls = urls.filterNot { url ->
                 url.contains("pasang-iklan.png") || url.contains("pasang-iklan5.png") || url.contains("Bookmark-Dulu.webp")
@@ -427,7 +424,7 @@ abstract class MirrorInKomik :
             if (filteredUrls.isEmpty()) {
                 throw IOException("Chapter images are not available yet.")
             }
-            
+
             // Masukkan gambar yang sudah bersih ke penampil komik
             filteredUrls.mapIndexed { index, url -> Page(index, imageUrl = url) }
         }
@@ -438,7 +435,7 @@ abstract class MirrorInKomik :
     override fun imageRequest(page: Page): Request {
         var imageUrl = page.imageUrl!!
         val proxyUrl = preferences.getString(PREF_PROXY_URL, "")?.trim()
-        
+
         if (!proxyUrl.isNullOrEmpty()) {
             imageUrl = if (proxyUrl.contains("%s")) {
                 proxyUrl.format(imageUrl)
@@ -455,19 +452,19 @@ abstract class MirrorInKomik :
             .add("Sec-Fetch-Dest", "empty")
             .add("Referer", "$baseUrl/")
             .build()
-        
+
         return GET(imageUrl, imageHeaders)
     }
 
     private class TypeFilter : Filter.Select<String>("Type", arrayOf("Manga", "Manhwa", "Manhua"), 0)
 
     private class GenreCheckBox(name: String, val id: String) : Filter.CheckBox(name)
-    
+
     private class GenreFilter(genres: List<GenreCheckBox>) : Filter.Group<GenreCheckBox>("Genre (Bisa pilih banyak)", genres)
 
     override fun getFilterList(): FilterList = FilterList(
         TypeFilter(),
-        GenreFilter(genreValues.map { GenreCheckBox(it, it) })
+        GenreFilter(genreValues.map { GenreCheckBox(it, it) }),
     )
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {

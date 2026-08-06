@@ -26,11 +26,13 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 @Source
-abstract class Shinigami : HttpSource(), ConfigurableSource {
+abstract class Shinigami :
+    HttpSource(),
+    ConfigurableSource {
     private val apiUrl = "https://api.shngm.io"
 
     private val cdnUrl = "https://storage.shngm.id"
-    
+
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
 
     override val supportsLatest = true
@@ -229,7 +231,6 @@ abstract class Shinigami : HttpSource(), ConfigurableSource {
         url = obj.chapterId
         scanlator = if (!obj.thumbnailImageUrl.isNullOrEmpty()) obj.thumbnailImageUrl else ""
     }
-    
 
     override fun pageListRequest(chapter: SChapter): Request {
         // Migration from old web urls to the new api based
